@@ -1,9 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-<<<<<<< Updated upstream
-import { Bell, CheckCheck, Trash2, PackageX, PackageMinus, ShoppingBag, UserPlus, CreditCard, RefreshCcw, Info } from "lucide-react";
-=======
 import Link from "next/link";
 import {
   Bell,
@@ -21,7 +18,6 @@ import {
   ArrowRight,
   ArrowUpRight,
 } from "lucide-react";
->>>>>>> Stashed changes
 import { Button, Card, EmptyState, LoadingState } from "@/components/ui/primitives";
 import { Pagination } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
@@ -126,7 +122,6 @@ export default function NotificationsPage() {
     setNotifications((prev) =>
       prev.map((item) => (item._id === n._id ? { ...item, isRead: true } : item))
     );
-    setUnreadCount((prev) => Math.max(0, prev - 1));
 
     try {
       await fetch(`/api/notifications/${n._id}`, {
@@ -208,49 +203,66 @@ export default function NotificationsPage() {
           <div className="divide-y divide-slate-100">
             {notifications.map((n) => {
               const Icon = ICONS[n.type] || Info;
-<<<<<<< Updated upstream
-=======
               const isUnread = !n.isRead;
               const destination = getNotificationDestination(n);
->>>>>>> Stashed changes
               return (
-                <div key={n._id} className={cn("flex items-start gap-3 px-5 py-4", !n.isRead && "bg-brand/5")}>
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+                <div
+                  key={n._id}
+                  className={cn(
+                    "flex items-start gap-3.5 px-5 py-4 transition-colors",
+                    isUnread
+                      ? "bg-blue-50/70 border-l-4 border-l-brand"
+                      : "bg-white hover:bg-slate-50/50"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors",
+                      isUnread
+                        ? "bg-brand text-white shadow-xs"
+                        : "bg-slate-100 text-slate-500"
+                    )}
+                  >
                     <Icon className="h-4.5 w-4.5" />
                   </div>
                   <div className="min-w-0 flex-1">
-<<<<<<< Updated upstream
-                    <p className="text-sm font-medium text-slate-800">{n.title}</p>
-                    <p className="text-sm text-slate-500">{n.message}</p>
-                    <p className="mt-1 text-xs text-slate-400">{formatDateTime(n.createdAt)}</p>
-=======
-                    {destination ? (
-                      <Link
-                        href={destination.href}
-                        onClick={() => markNotificationAsRead(n)}
-                        className="group/link inline-flex items-center gap-1.5 hover:underline"
-                      >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {destination ? (
+                        <Link
+                          href={destination.href}
+                          onClick={() => markNotificationAsRead(n)}
+                          className="group/link inline-flex items-center gap-1.5 hover:underline"
+                        >
+                          <p
+                            className={cn(
+                              "text-sm transition-colors group-hover/link:text-brand",
+                              isUnread ? "font-bold text-slate-900" : "font-medium text-slate-800"
+                            )}
+                          >
+                            {n.title}
+                          </p>
+                          <ArrowUpRight className="h-3.5 w-3.5 text-slate-400 group-hover/link:text-brand transition-colors" />
+                        </Link>
+                      ) : (
                         <p
                           className={cn(
-                            "text-sm transition-colors group-hover/link:text-brand",
-                            isUnread ? "font-semibold text-slate-900" : "font-medium text-slate-800"
+                            "text-sm",
+                            isUnread ? "font-bold text-slate-900" : "font-medium text-slate-800"
                           )}
                         >
                           {n.title}
                         </p>
-                        <ArrowUpRight className="h-3.5 w-3.5 text-slate-400 group-hover/link:text-brand transition-colors" />
-                      </Link>
-                    ) : (
-                      <p
-                        className={cn(
-                          "text-sm",
-                          isUnread ? "font-semibold text-slate-900" : "font-medium text-slate-800"
-                        )}
-                      >
-                        {n.title}
-                      </p>
-                    )}
-                    <p className={cn("text-sm mt-0.5", isUnread ? "text-slate-700" : "text-slate-500")}>
+                      )}
+
+                      {isUnread && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-bold text-brand uppercase tracking-wider">
+                          <span className="h-1.5 w-1.5 rounded-full bg-brand shrink-0 animate-pulse" />
+                          Unread
+                        </span>
+                      )}
+                    </div>
+
+                    <p className={cn("text-sm mt-0.5", isUnread ? "text-slate-800 font-medium" : "text-slate-500")}>
                       {n.message}
                     </p>
 
@@ -259,7 +271,12 @@ export default function NotificationsPage() {
                         <Link
                           href={destination.href}
                           onClick={() => markNotificationAsRead(n)}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-brand/10 hover:bg-brand/20 text-brand px-3 py-1.5 text-xs font-bold transition shadow-2xs"
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition shadow-2xs",
+                            isUnread
+                              ? "bg-brand text-white hover:bg-brand-hover shadow-xs"
+                              : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                          )}
                         >
                           <span>{destination.label}</span>
                           <ArrowRight className="h-3.5 w-3.5" />
@@ -270,16 +287,20 @@ export default function NotificationsPage() {
                     <p className={cn("mt-1.5 text-xs", isUnread ? "text-slate-500 font-medium" : "text-slate-400")}>
                       {formatDateTime(n.createdAt)}
                     </p>
->>>>>>> Stashed changes
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <button
                       onClick={() => toggleRead(n)}
-                      className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-brand hover:bg-brand/10"
+                      className={cn(
+                        "rounded-lg px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer",
+                        isUnread
+                          ? "bg-brand/10 text-brand hover:bg-brand/20 font-bold"
+                          : "text-slate-500 hover:bg-slate-100"
+                      )}
                     >
                       {n.isRead ? "Mark unread" : "Mark read"}
                     </button>
-                    <button onClick={() => remove(n)} className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-500">
+                    <button onClick={() => remove(n)} className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-500 cursor-pointer">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>

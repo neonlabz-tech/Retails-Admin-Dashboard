@@ -15,15 +15,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     await connectDB();
     const { id } = await params;
     const { isRead } = schema.parse(await request.json());
-<<<<<<< Updated upstream
-    const notification = await Notification.findByIdAndUpdate(id, { isRead }, { new: true });
-=======
     const notification = await Notification.findOneAndUpdate(
       { _id: id, $and: ADMIN_NOTIFICATION_CONDITIONS },
       { $set: { isRead, read: isRead } },
       { new: true }
     );
->>>>>>> Stashed changes
     if (!notification) return apiError("Notification not found", 404);
     return apiSuccess(notification, `Marked as ${isRead ? "read" : "unread"}`);
   } catch (err) {

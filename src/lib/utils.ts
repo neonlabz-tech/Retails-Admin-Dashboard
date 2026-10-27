@@ -42,31 +42,16 @@ export function formatDateTime(date: Date | string | undefined | null): string {
   });
 }
 
-export function formatOrderId(orderNumber?: string, createdAt?: Date | string | null): string {
-  if (orderNumber && /^ORD-\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/.test(orderNumber)) {
-    return orderNumber;
-  }
-  if (createdAt) {
-    const d = new Date(createdAt);
-    if (!isNaN(d.getTime())) {
-      const y = d.getFullYear().toString().slice(-2);
-      const m = (d.getMonth() + 1).toString().padStart(2, "0");
-      const day = d.getDate().toString().padStart(2, "0");
-      return `ORD-${y}${m}${day}`;
-    }
-  }
-  if (orderNumber) {
-    const match = orderNumber.match(/^ORD-(\d{6})/);
-    if (match) return `ORD-${match[1]}`;
-  }
+export function formatOrderId(orderNumber?: string, _createdAt?: Date | string | null): string {
   return orderNumber || "-";
 }
 
 export async function generateOrderNumber(date = new Date()): Promise<string> {
-  const y = date.getFullYear().toString().slice(-2);
-  const m = (date.getMonth() + 1).toString().padStart(2, "0");
   const d = date.getDate().toString().padStart(2, "0");
-  return `ORD-${y}${m}${d}`;
+  const m = (date.getMonth() + 1).toString().padStart(2, "0");
+  const y = date.getFullYear().toString().slice(-2);
+  const rand = Math.floor(1000 + Math.random() * 9000);
+  return `ORD-${d}${m}${y}-${rand}`;
 }
 
 export function getPaginationParams(searchParams: URLSearchParams) {

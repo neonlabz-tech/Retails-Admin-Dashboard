@@ -69,25 +69,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       const paymentRecordStatus =
         effectivePayStatus === "paid"
           ? "completed"
-<<<<<<< Updated upstream
-          : finalPaymentStatus === "failed"
-          ? "failed"
-          : finalPaymentStatus === "refunded"
-=======
           : effectivePayStatus === "failed"
           ? "cancelled"
           : effectivePayStatus === "refunded"
->>>>>>> Stashed changes
           ? "refunded"
           : "pending";
       await Payment.updateOne(
         { order: order._id },
         {
-<<<<<<< Updated upstream
-          status: paymentRecordStatus,
-          ...(finalPaymentStatus === "paid" ? { paidAt: new Date() } : {}),
-        }
-=======
           $set: {
             orderNumber: order.orderNumber,
             customer: order.customer,
@@ -102,16 +91,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           },
         },
         { upsert: true }
->>>>>>> Stashed changes
       );
     }
 
     await order.save();
 
     if (finalStatus) {
-<<<<<<< Updated upstream
-      await notifyOrderStatusChange(order.orderNumber, finalStatus, order.customerSnapshot.email, order.customerSnapshot.name);
-=======
       await notifyOrderStatusChange(
         order.orderNumber,
         finalStatus,
@@ -134,7 +119,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           })),
         }
       );
->>>>>>> Stashed changes
     }
 
     return apiSuccess(order, "Order updated successfully");

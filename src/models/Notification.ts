@@ -30,8 +30,6 @@ const NotificationSchema = new Schema<INotification>(
   { timestamps: true }
 );
 
-<<<<<<< Updated upstream
-=======
 /**
  * Filter conditions for admin-only notifications.
  * The shared notifications collection also contains customer-facing notifications
@@ -61,6 +59,5 @@ if (mongoose.models.Notification) {
   delete mongoose.models.Notification;
 }
 
->>>>>>> Stashed changes
 export const Notification: Model<INotification> =
   mongoose.models.Notification || mongoose.model<INotification>("Notification", NotificationSchema);

@@ -577,4 +577,49 @@ export const emailTemplates = {
   newCustomerAlert(name: string, email: string) {
     return layout("New Customer Registered", `<p>${name} (${email}) just created an account.</p>`);
   },
+  passwordReset(name: string, resetUrl: string): string {
+    const safeName = escapeHtml(name || "Admin");
+    const safeUrl = escapeHtml(resetUrl);
+    return layout(
+      "Password Reset Request",
+      `
+      <tr>
+        <td style="padding: 32px 32px 16px; text-align: left;">
+          <div style="display: inline-block; padding: 10px 14px; background-color: #eff6ff; border-radius: 10px; margin-bottom: 16px;">
+            <span style="font-size: 20px;">🔑</span>
+          </div>
+          <h1 style="margin: 0 0 8px; font-size: 20px; font-weight: 700; color: #0f172a;">Password Reset Request</h1>
+          <p style="margin: 0; font-size: 14px; color: #64748b; line-height: 1.6;">
+            Hello <strong>${safeName}</strong>, we received a request to reset your password for the RKF Admin Dashboard.
+          </p>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding: 16px 32px; text-align: left;">
+          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 20px;">
+            <p style="margin: 0 0 16px; font-size: 13px; color: #475569; line-height: 1.6;">
+              Click the button below to choose a new password. This link will expire in <strong>1 hour</strong>.
+            </p>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${safeUrl}" style="display: inline-block; background-color: #093b84; color: #ffffff; padding: 12px 28px; font-size: 14px; font-weight: 600; text-decoration: none; border-radius: 8px; box-shadow: 0 2px 4px rgba(9, 59, 132, 0.2);">
+                Reset Password
+              </a>
+            </div>
+            <p style="margin: 16px 0 0; font-size: 11px; color: #94a3b8; word-break: break-all;">
+              Or copy and paste this link into your browser:<br/>
+              <a href="${safeUrl}" style="color: #093b84;">${safeUrl}</a>
+            </p>
+          </div>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding: 16px 32px 32px; text-align: left;">
+          <p style="margin: 0; font-size: 12px; color: #94a3b8; line-height: 1.5;">
+            If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged.
+          </p>
+        </td>
+      </tr>
+      `
+    );
+  },
 };

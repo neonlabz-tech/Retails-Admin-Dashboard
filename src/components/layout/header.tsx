@@ -74,13 +74,6 @@ export function Header({ onMenuClick, admin }: HeaderProps) {
 
   useEffect(() => {
     let active = true;
-<<<<<<< Updated upstream
-    async function loadUnread() {
-      try {
-        const res = await fetch("/api/notifications?unreadOnly=true&limit=1");
-        const json = await res.json();
-        if (active && json.success) setUnread(json.data.meta.total);
-=======
     let lastFetched = 0;
 
     async function loadUnread(isPeriodic = false) {
@@ -97,8 +90,6 @@ export function Header({ onMenuClick, admin }: HeaderProps) {
             latestNotifIdRef.current &&
             latestNotif._id !== latestNotifIdRef.current
           ) {
-            // New notification arrived in background (e.g. customer placed an order)
-            toast.info(`🔔 ${latestNotif.title}: ${latestNotif.message}`);
             window.dispatchEvent(new Event("notifications-updated"));
           }
 
@@ -109,18 +100,11 @@ export function Header({ onMenuClick, admin }: HeaderProps) {
           setUnread(nextCount);
           lastFetched = Date.now();
         }
->>>>>>> Stashed changes
       } catch {
         /* ignore */
       }
     }
     loadUnread();
-<<<<<<< Updated upstream
-    const interval = setInterval(loadUnread, 20000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-=======
 
     // Check for incoming notifications every 15 seconds
     const interval = setInterval(() => {
@@ -143,9 +127,12 @@ export function Header({ onMenuClick, admin }: HeaderProps) {
       clearInterval(interval);
       window.removeEventListener("notifications-updated", onNotificationsUpdated);
       window.removeEventListener("focus", onFocus);
->>>>>>> Stashed changes
     };
   }, [toast]);
+
+  function handleBellClick() {
+    setUnread(0);
+  }
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -165,10 +152,17 @@ export function Header({ onMenuClick, admin }: HeaderProps) {
         </div>
       </div>
       <div className="flex items-center gap-3 sm:gap-4">
-        <Link href="/dashboard/notifications" className="relative rounded-xl p-2 text-slate-500 hover:bg-slate-200/50 hover:text-slate-800 transition-colors">
+        <Link
+          href="/dashboard/notifications"
+          onClick={handleBellClick}
+          className="relative rounded-xl p-2 text-slate-500 hover:bg-slate-200/50 hover:text-slate-800 transition-colors"
+          title={unread > 0 ? `${unread} unread notification${unread > 1 ? "s" : ""}` : "Notifications"}
+        >
           <Bell className="h-5 w-5" />
           {unread > 0 && (
-            <span className="absolute 1 top-1.5 right-1.5 flex h-2 w-2 rounded-full bg-brand ring-2 ring-brand-subtle" />
+            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-bold text-white shadow-xs ring-2 ring-brand-subtle">
+              {unread > 99 ? "99+" : unread}
+            </span>
           )}
         </Link>
         <div className="h-6 w-px bg-slate-200" />

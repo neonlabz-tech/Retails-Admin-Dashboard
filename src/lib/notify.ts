@@ -207,9 +207,6 @@ export async function notifyNewCustomer(name: string, email: string) {
   }
 }
 
-<<<<<<< Updated upstream
-export async function notifyOrderStatusChange(orderNumber: string, status: string, customerEmail: string, customerName: string) {
-=======
 export interface OrderStatusDetails {
   subtotal?: number;
   shippingFee?: number;
@@ -244,7 +241,6 @@ export async function notifyOrderStatusChange(
   details?: OrderStatusDetails
 ) {
   const cleanOrderNumber = orderNumber.replace(/^#/, "");
->>>>>>> Stashed changes
   await createNotification({
     type: "order_status",
     title: "Order status updated",
@@ -265,10 +261,6 @@ export async function notifyOrderStatusChange(
 
     await sendEmail({
       to: customerEmail,
-<<<<<<< Updated upstream
-      subject: `Order ${orderNumber} status update`,
-      html: emailTemplates.orderStatusUpdate(orderNumber, status, customerName),
-=======
       subject,
       html: emailTemplates.orderStatusUpdate({
         orderNumber: cleanOrderNumber,
@@ -284,7 +276,6 @@ export async function notifyOrderStatusChange(
         note: details?.note,
         items: details?.items,
       }),
->>>>>>> Stashed changes
     });
   }
 }

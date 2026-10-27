@@ -23,17 +23,13 @@ import {
   RotateCcw,
 } from "lucide-react";
 import Link from "next/link";
-<<<<<<< Updated upstream
-import { Button, Badge, Card } from "@/components/ui/primitives";
-=======
 import Image from "next/image";
 import { Button, Badge, Card, LoadingState } from "@/components/ui/primitives";
->>>>>>> Stashed changes
 import { DataTable, type Column, Pagination, SearchInput } from "@/components/ui/table";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { cn, formatCurrency, formatDateTime, formatOrderId } from "@/lib/utils";
-import { ORDER_STATUSES, PAYMENT_STATUSES } from "@/lib/constants";
+import { ORDER_STATUS_OPTIONS, PAYMENT_STATUSES } from "@/lib/constants";
 import { printInvoice } from "@/lib/invoice";
 
 interface OrderRow {
@@ -155,6 +151,13 @@ function OrdersContent() {
   const paymentMenuRef = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ total: 0, totalPages: 1, limit: 10 });
+
+  const todayStr = useMemo(() => toDateInputValue(new Date()), []);
+  const yesterdayStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return toDateInputValue(d);
+  }, []);
 
   const [detail, setDetail] = useState<OrderRow | null>(null);
   const [newStatus, setNewStatus] = useState("");
@@ -317,14 +320,12 @@ function OrdersContent() {
   }, [load]);
 
   function openDetail(order: OrderRow) {
-    const defaultStatus =
-      order.paymentStatus === "pending" && (!order.status || order.status === "pending")
-        ? "processing"
-        : order.status;
+    const defaultStatus = (ORDER_STATUS_OPTIONS as readonly string[]).includes(order.status)
+      ? order.status
+      : "processing";
     setDetail({
       ...order,
       orderNumber: formatOrderId(order.orderNumber, order.createdAt),
-      status: defaultStatus,
     });
     setNewStatus(defaultStatus);
     setNewPaymentStatus(order.paymentStatus);
@@ -552,7 +553,7 @@ function OrdersContent() {
                           onClick={() => applyPreset("today")}
                           className={cn(
                             "rounded-xl px-3 py-2 text-xs font-medium text-left transition cursor-pointer",
-                            dateFrom === toDateInputValue(new Date()) && dateTo === toDateInputValue(new Date())
+                            dateFrom === todayStr && dateTo === todayStr
                               ? "bg-brand/10 text-brand font-semibold"
                               : "bg-slate-50 text-slate-700 hover:bg-brand/10 hover:text-brand"
                           )}
@@ -564,8 +565,7 @@ function OrdersContent() {
                           onClick={() => applyPreset("yesterday")}
                           className={cn(
                             "rounded-xl px-3 py-2 text-xs font-medium text-left transition cursor-pointer",
-                            dateFrom === toDateInputValue(new Date(Date.now() - 86400000)) &&
-                              dateTo === toDateInputValue(new Date(Date.now() - 86400000))
+                            dateFrom === yesterdayStr && dateTo === yesterdayStr
                               ? "bg-brand/10 text-brand font-semibold"
                               : "bg-slate-50 text-slate-700 hover:bg-brand/10 hover:text-brand"
                           )}
@@ -722,7 +722,7 @@ function OrdersContent() {
                   </button>
                   <div className="my-1 border-t border-slate-100" />
                   <div className="max-h-56 overflow-y-auto space-y-0.5">
-                    {ORDER_STATUSES.map((s) => {
+                    {ORDER_STATUS_OPTIONS.map((s) => {
                       const isCurrent = status === s;
                       return (
                         <button
@@ -1019,37 +1019,6 @@ function OrdersContent() {
                     </span>
                   </div>
 
-<<<<<<< Updated upstream
-                    <div className="divide-y divide-slate-100">
-                      {detail.items.map((item, idx) => {
-                        const lineSubtotal = item.subtotal || item.price * item.quantity;
-                        return (
-                          <div key={idx} className="p-3.5 sm:p-4 flex items-center gap-3 hover:bg-slate-50/50 transition">
-                            <div className="h-12 w-12 rounded-xl bg-slate-100 border border-slate-200/80 flex items-center justify-center shrink-0 overflow-hidden">
-                              {item.image ? (
-                                <img src={item.image} alt={item.name} className="h-full w-full object-cover" />
-                              ) : (
-                                <Package className="h-5 w-5 text-slate-400" />
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <h4 className="text-xs sm:text-sm font-semibold text-slate-900 truncate">
-                                {item.name}
-                              </h4>
-                              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                                <span className="font-mono text-[11px] text-slate-500">
-                                  SKU: {item.sku || "N/A"}
-                                </span>
-                                <span className="text-slate-300">•</span>
-                                <span className="text-xs text-slate-500">
-                                  {formatCurrency(item.price)} × {item.quantity}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <span className="text-xs sm:text-sm font-bold text-slate-900">
-                                {formatCurrency(lineSubtotal)}
-=======
                   {/* Items List */}
                   <div className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
                     {detail.items.map((item, idx) => {
@@ -1081,7 +1050,6 @@ function OrdersContent() {
                               <span className="text-slate-300">•</span>
                               <span className="text-xs text-slate-500">
                                 {formatCurrency(item.price)} × {item.quantity}
->>>>>>> Stashed changes
                               </span>
                             </div>
                           </div>
@@ -1105,11 +1073,7 @@ function OrdersContent() {
                       <div className="flex justify-between text-slate-600">
                         <span>Discount</span>
                         <span className="font-semibold text-emerald-600">
-<<<<<<< Updated upstream
-                          {detail.discount > 0 ? `-${formatCurrency(detail.discount)}` : "-LKR 0.00"}
-=======
                           -{formatCurrency(detail.discount)}
->>>>>>> Stashed changes
                         </span>
                       </div>
                     )}
@@ -1180,7 +1144,7 @@ function OrdersContent() {
                           }}
                           className="peer w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-800 shadow-xs focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand cursor-pointer pr-8"
                         >
-                          {ORDER_STATUSES.map((s) => (
+                          {ORDER_STATUS_OPTIONS.map((s) => (
                             <option key={s} value={s} className="capitalize">
                               {s}
                             </option>

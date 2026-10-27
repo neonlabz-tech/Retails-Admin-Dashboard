@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Save, KeyRound, UserCircle } from "lucide-react";
+import { Save, KeyRound, UserCircle, Mail } from "lucide-react";
 import { Button, Card, Input, LoadingState, Badge } from "@/components/ui/primitives";
 import { ImageUploader } from "@/components/ui/image-uploader";
 import { useToast } from "@/components/ui/toast";
@@ -23,9 +23,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<AdminProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [changingPassword, setChangingPassword] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
+  const [sendingReset, setSendingReset] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -61,28 +59,28 @@ export default function ProfilePage() {
     }
   }
 
-  async function handleChangePassword() {
-    if (!currentPassword || !newPassword) {
-      toast.error("Please fill in both password fields");
-      return;
-    }
-    setChangingPassword(true);
+  async function handleSendResetEmail() {
+    if (!profile?.email) return;
+    setSendingReset(true);
     try {
-      const res = await fetch("/api/auth/me", {
-        method: "PATCH",
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPassword, newPassword }),
+        body: JSON.stringify({ email: profile.email }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) {
-        toast.error(json.message || "Failed to update password");
+        toast.error(json.message || "Failed to send password reset email");
         return;
       }
-      toast.success("Password updated successfully");
-      setCurrentPassword("");
-      setNewPassword("");
+      if (json.data?.resetUrl) {
+        console.log("🔗 Password Reset Link:", json.data.resetUrl);
+      }
+      toast.success(json.message || "Password reset email sent successfully");
+    } catch {
+      toast.error("Failed to send password reset email. Please try again.");
     } finally {
-      setChangingPassword(false);
+      setSendingReset(false);
     }
   }
 
@@ -125,16 +123,23 @@ export default function ProfilePage() {
       </Card>
 
       <Card className="p-6">
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-          <KeyRound className="h-4 w-4" /> Change Password
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+          <KeyRound className="h-4 w-4 text-slate-700" />
+          <span>Change Password</span>
         </div>
-        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Input label="Current password" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
-          <Input label="New password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} hint="Minimum 6 characters" />
-        </div>
+        <p className="mt-2 text-xs sm:text-sm text-slate-600 leading-relaxed">
+          Need to update your password? Click below to send a secure password reset link to your registered email (<strong className="font-semibold text-slate-900">{profile.email}</strong>).
+        </p>
         <div className="mt-4">
-          <Button onClick={handleChangePassword} loading={changingPassword} variant="secondary">
-            Update password
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleSendResetEmail}
+            loading={sendingReset}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200/80 bg-slate-100/80 px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-700 hover:bg-slate-200/70 hover:text-slate-900 transition shadow-none cursor-pointer"
+          >
+            <Mail className="h-4 w-4 text-slate-500" />
+            <span>Send Password Reset Email</span>
           </Button>
         </div>
       </Card>

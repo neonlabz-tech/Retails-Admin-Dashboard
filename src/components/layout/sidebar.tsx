@@ -15,6 +15,8 @@ import {
   Settings,
   UserCircle,
   Store,
+  TrendingUp,
+  Star,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,7 +28,9 @@ const NAV_ITEMS = [
   { href: "/dashboard/orders", label: "Orders", icon: ShoppingCart },
   { href: "/dashboard/stock", label: "Stock & Inventory", icon: Boxes },
   { href: "/dashboard/customers", label: "Customers", icon: Users },
+  { href: "/dashboard/reviews", label: "Reviews", icon: Star },
   { href: "/dashboard/payments", label: "Payments", icon: CreditCard },
+  { href: "/dashboard/profit-expenses", label: "Profit & Expenses", icon: TrendingUp },
   { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
   // { href: "/dashboard/settings", label: "Settings", icon: Settings },
   { href: "/dashboard/profile", label: "Admin Profile", icon: UserCircle },

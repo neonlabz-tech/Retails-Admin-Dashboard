@@ -150,3 +150,13 @@ export const inviteAdminSchema = z.object({
   password: z.string().min(6),
   role: z.enum(ADMIN_ROLES),
 });
+
+
+export const expenseSchema = z.object({
+  title: z.string().trim().min(1, "Title is required"),
+  description: z.string().optional().default(""),
+  category: z.string().trim().min(1, "Category is required"),
+  amount: z.coerce.number().min(0.01, "Amount must be greater than 0"),
+  date: z.coerce.date().optional().default(() => new Date()),
+  notes: z.string().optional().default(""),
+});
