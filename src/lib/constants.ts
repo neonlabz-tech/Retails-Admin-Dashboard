@@ -49,6 +49,18 @@ export const NOTIFICATION_TYPES = [
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
+export const ADMIN_NOTIFICATION_TYPES = [
+  "new_order",
+  "new_customer",
+  "low_stock",
+  "out_of_stock",
+  "payment_update",
+  "order_status",
+  "general",
+  "system",
+] as const;
+export type AdminNotificationType = (typeof ADMIN_NOTIFICATION_TYPES)[number];
+
 export const STOCK_LOG_TYPES = ["increase", "decrease", "adjustment", "sale", "return"] as const;
 export type StockLogType = (typeof STOCK_LOG_TYPES)[number];
 

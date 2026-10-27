@@ -54,6 +54,7 @@ export const orderStatusSchema = z.object({
   status: z.enum(ORDER_STATUSES).optional(),
   paymentStatus: z.enum(PAYMENT_STATUSES).optional(),
   note: z.string().optional(),
+  shippingFee: z.coerce.number().min(0).optional(),
 });
 
 export const paymentStatusSchema = z.object({

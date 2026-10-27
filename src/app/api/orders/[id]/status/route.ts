@@ -16,12 +16,27 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     await connectDB();
     const { id } = await params;
     const body = await request.json();
-    const { status, paymentStatus, note } = orderStatusSchema.parse(body);
+    const { status, paymentStatus, note, shippingFee } = orderStatusSchema.parse(body);
 
     const order = await Order.findById(id);
     if (!order) return apiError("Order not found", 404);
 
     const previousStatus = order.status;
+
+    // Validate shipping fee is required when status is shipped
+    if (status === "shipped") {
+      if (shippingFee === undefined || typeof shippingFee !== "number" || isNaN(shippingFee) || shippingFee < 0) {
+        return apiError("Shipping fee is required when marking order as shipped", 400);
+      }
+    }
+
+    // If shipping fee is updated, adjust shippingFee and recalculate order total
+    if (typeof shippingFee === "number" && !isNaN(shippingFee) && shippingFee >= 0) {
+      order.shippingFee = shippingFee;
+      const subtotal = order.subtotal ?? 0;
+      const discount = order.discount ?? 0;
+      order.total = Math.max(0, subtotal - discount + shippingFee);
+    }
 
     if (status && status === "cancelled" && previousStatus !== "cancelled") {
       for (const item of order.items) {
@@ -46,29 +61,80 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       order.statusHistory.push({ status: finalStatus, changedAt: new Date(), note });
     }
 
-    if (finalPaymentStatus) {
-      order.paymentStatus = finalPaymentStatus;
+    if (finalPaymentStatus || shippingFee !== undefined) {
+      if (finalPaymentStatus) {
+        order.paymentStatus = finalPaymentStatus;
+      }
+      const effectivePayStatus = finalPaymentStatus || order.paymentStatus;
       const paymentRecordStatus =
-        finalPaymentStatus === "paid"
+        effectivePayStatus === "paid"
           ? "completed"
+<<<<<<< Updated upstream
           : finalPaymentStatus === "failed"
           ? "failed"
           : finalPaymentStatus === "refunded"
+=======
+          : effectivePayStatus === "failed"
+          ? "cancelled"
+          : effectivePayStatus === "refunded"
+>>>>>>> Stashed changes
           ? "refunded"
           : "pending";
       await Payment.updateOne(
         { order: order._id },
         {
+<<<<<<< Updated upstream
           status: paymentRecordStatus,
           ...(finalPaymentStatus === "paid" ? { paidAt: new Date() } : {}),
         }
+=======
+          $set: {
+            orderNumber: order.orderNumber,
+            customer: order.customer,
+            amount: order.total,
+            method: order.paymentMethod || "cod",
+            status: paymentRecordStatus,
+            ...(effectivePayStatus === "paid" ? { paidAt: new Date() } : {}),
+          },
+          $setOnInsert: {
+            gateway: order.paymentMethod === "cod" ? "cod" : "manual",
+            createdAt: order.createdAt,
+          },
+        },
+        { upsert: true }
+>>>>>>> Stashed changes
       );
     }
 
     await order.save();
 
     if (finalStatus) {
+<<<<<<< Updated upstream
       await notifyOrderStatusChange(order.orderNumber, finalStatus, order.customerSnapshot.email, order.customerSnapshot.name);
+=======
+      await notifyOrderStatusChange(
+        order.orderNumber,
+        finalStatus,
+        order.customerSnapshot?.email || "",
+        order.customerSnapshot?.name || "Customer",
+        order._id.toString(),
+        {
+          subtotal: order.subtotal,
+          shippingFee: order.shippingFee,
+          discount: order.discount,
+          total: order.total,
+          paymentMethod: order.paymentMethod,
+          shippingAddress: order.shippingAddress,
+          customerSnapshot: order.customerSnapshot,
+          note,
+          items: order.items?.map((it) => ({
+            name: it.name,
+            quantity: it.quantity,
+            price: it.price,
+          })),
+        }
+      );
+>>>>>>> Stashed changes
     }
 
     return apiSuccess(order, "Order updated successfully");

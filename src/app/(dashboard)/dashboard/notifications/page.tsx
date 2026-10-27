@@ -1,7 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+<<<<<<< Updated upstream
 import { Bell, CheckCheck, Trash2, PackageX, PackageMinus, ShoppingBag, UserPlus, CreditCard, RefreshCcw, Info } from "lucide-react";
+=======
+import Link from "next/link";
+import {
+  Bell,
+  CheckCheck,
+  Trash2,
+  PackageX,
+  PackageMinus,
+  ShoppingBag,
+  UserPlus,
+  CreditCard,
+  RefreshCcw,
+  PackageCheck,
+  Truck,
+  Info,
+  ArrowRight,
+  ArrowUpRight,
+} from "lucide-react";
+>>>>>>> Stashed changes
 import { Button, Card, EmptyState, LoadingState } from "@/components/ui/primitives";
 import { Pagination } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
@@ -27,6 +47,47 @@ const ICONS: Record<NotificationType, React.ElementType> = {
   order_status: RefreshCcw,
   system: Info,
 };
+
+function getNotificationDestination(n: NotificationRow): { href: string; label: string } | null {
+  // Check for order number in message or title (e.g. ORD-271026-1011)
+  const orderMatch =
+    n.message.match(/#?(ORD-[0-9A-Za-z-]+)/i) ||
+    n.title.match(/#?(ORD-[0-9A-Za-z-]+)/i);
+  const orderNum = orderMatch ? orderMatch[1].replace(/^#/, "") : "";
+
+  if (n.type === "new_order" || n.type === "order_status" || orderNum) {
+    const href = orderNum
+      ? `/dashboard/orders?search=${encodeURIComponent(orderNum)}`
+      : n.link || "/dashboard/orders";
+    return {
+      href,
+      label: orderNum ? `View Order #${orderNum}` : "View Order",
+    };
+  }
+
+  if (n.type === "new_customer") {
+    return {
+      href: n.link || "/dashboard/customers",
+      label: "View Customer",
+    };
+  }
+
+  if (n.type === "low_stock" || n.type === "out_of_stock") {
+    return {
+      href: n.link || "/dashboard/stock",
+      label: "View Inventory",
+    };
+  }
+
+  if (n.link) {
+    return {
+      href: n.link,
+      label: "View Details",
+    };
+  }
+
+  return null;
+}
 
 export default function NotificationsPage() {
   const toast = useToast();
@@ -57,6 +118,27 @@ export default function NotificationsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  async function markNotificationAsRead(n: NotificationRow) {
+    if (n.isRead) return;
+
+    // Optimistically mark as read in local state
+    setNotifications((prev) =>
+      prev.map((item) => (item._id === n._id ? { ...item, isRead: true } : item))
+    );
+    setUnreadCount((prev) => Math.max(0, prev - 1));
+
+    try {
+      await fetch(`/api/notifications/${n._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isRead: true }),
+      });
+      window.dispatchEvent(new Event("notifications-updated"));
+    } catch {
+      /* ignore */
+    }
+  }
 
   async function toggleRead(n: NotificationRow) {
     const res = await fetch(`/api/notifications/${n._id}`, {
@@ -126,15 +208,69 @@ export default function NotificationsPage() {
           <div className="divide-y divide-slate-100">
             {notifications.map((n) => {
               const Icon = ICONS[n.type] || Info;
+<<<<<<< Updated upstream
+=======
+              const isUnread = !n.isRead;
+              const destination = getNotificationDestination(n);
+>>>>>>> Stashed changes
               return (
                 <div key={n._id} className={cn("flex items-start gap-3 px-5 py-4", !n.isRead && "bg-brand/5")}>
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
                     <Icon className="h-4.5 w-4.5" />
                   </div>
                   <div className="min-w-0 flex-1">
+<<<<<<< Updated upstream
                     <p className="text-sm font-medium text-slate-800">{n.title}</p>
                     <p className="text-sm text-slate-500">{n.message}</p>
                     <p className="mt-1 text-xs text-slate-400">{formatDateTime(n.createdAt)}</p>
+=======
+                    {destination ? (
+                      <Link
+                        href={destination.href}
+                        onClick={() => markNotificationAsRead(n)}
+                        className="group/link inline-flex items-center gap-1.5 hover:underline"
+                      >
+                        <p
+                          className={cn(
+                            "text-sm transition-colors group-hover/link:text-brand",
+                            isUnread ? "font-semibold text-slate-900" : "font-medium text-slate-800"
+                          )}
+                        >
+                          {n.title}
+                        </p>
+                        <ArrowUpRight className="h-3.5 w-3.5 text-slate-400 group-hover/link:text-brand transition-colors" />
+                      </Link>
+                    ) : (
+                      <p
+                        className={cn(
+                          "text-sm",
+                          isUnread ? "font-semibold text-slate-900" : "font-medium text-slate-800"
+                        )}
+                      >
+                        {n.title}
+                      </p>
+                    )}
+                    <p className={cn("text-sm mt-0.5", isUnread ? "text-slate-700" : "text-slate-500")}>
+                      {n.message}
+                    </p>
+
+                    {destination && (
+                      <div className="mt-2.5">
+                        <Link
+                          href={destination.href}
+                          onClick={() => markNotificationAsRead(n)}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-brand/10 hover:bg-brand/20 text-brand px-3 py-1.5 text-xs font-bold transition shadow-2xs"
+                        >
+                          <span>{destination.label}</span>
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </Link>
+                      </div>
+                    )}
+
+                    <p className={cn("mt-1.5 text-xs", isUnread ? "text-slate-500 font-medium" : "text-slate-400")}>
+                      {formatDateTime(n.createdAt)}
+                    </p>
+>>>>>>> Stashed changes
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <button

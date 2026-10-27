@@ -194,7 +194,26 @@ export async function POST(request: NextRequest) {
     customer.totalSpent = (customer.totalSpent || 0) + total;
     await customer.save();
 
-    await notifyNewOrder(order.orderNumber, formatCurrency(total));
+    await notifyNewOrder({
+      orderNumber: order.orderNumber,
+      total,
+      subtotal: order.subtotal,
+      discount: order.discount,
+      shippingFee: order.shippingFee,
+      paymentMethod: order.paymentMethod,
+      customerSnapshot: {
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+      },
+      shippingAddress: order.shippingAddress,
+      items: order.items?.map((it) => ({
+        name: it.name,
+        quantity: it.quantity,
+        price: it.price,
+      })),
+      createdAt: order.createdAt,
+    });
 
     return apiSuccess(order, "Order created successfully", 201);
   } catch (err) {

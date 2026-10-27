@@ -70,24 +70,82 @@ export function Header({ onMenuClick, admin }: HeaderProps) {
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
 
+  const latestNotifIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     let active = true;
+<<<<<<< Updated upstream
     async function loadUnread() {
       try {
         const res = await fetch("/api/notifications?unreadOnly=true&limit=1");
         const json = await res.json();
         if (active && json.success) setUnread(json.data.meta.total);
+=======
+    let lastFetched = 0;
+
+    async function loadUnread(isPeriodic = false) {
+      try {
+        const res = await fetch("/api/notifications?unreadOnly=true&limit=1");
+        const json = await res.json();
+        if (active && json.success) {
+          const nextCount = json.data.unreadCount ?? json.data.meta?.total ?? 0;
+          const latestNotif = json.data.notifications?.[0];
+
+          if (
+            isPeriodic &&
+            latestNotif &&
+            latestNotifIdRef.current &&
+            latestNotif._id !== latestNotifIdRef.current
+          ) {
+            // New notification arrived in background (e.g. customer placed an order)
+            toast.info(`🔔 ${latestNotif.title}: ${latestNotif.message}`);
+            window.dispatchEvent(new Event("notifications-updated"));
+          }
+
+          if (latestNotif) {
+            latestNotifIdRef.current = latestNotif._id;
+          }
+
+          setUnread(nextCount);
+          lastFetched = Date.now();
+        }
+>>>>>>> Stashed changes
       } catch {
         /* ignore */
       }
     }
     loadUnread();
+<<<<<<< Updated upstream
     const interval = setInterval(loadUnread, 20000);
     return () => {
       active = false;
       clearInterval(interval);
+=======
+
+    // Check for incoming notifications every 15 seconds
+    const interval = setInterval(() => {
+      loadUnread(true);
+    }, 15000);
+
+    const onNotificationsUpdated = () => loadUnread(false);
+    const onFocus = () => {
+      // Refresh on tab focus if at least 15 seconds have passed
+      if (Date.now() - lastFetched > 15000) {
+        loadUnread(false);
+      }
     };
-  }, []);
+
+    window.addEventListener("notifications-updated", onNotificationsUpdated);
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+      window.removeEventListener("notifications-updated", onNotificationsUpdated);
+      window.removeEventListener("focus", onFocus);
+>>>>>>> Stashed changes
+    };
+  }, [toast]);
 
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
