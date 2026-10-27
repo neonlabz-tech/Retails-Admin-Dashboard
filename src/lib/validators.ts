@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ORDER_STATUSES, PAYMENT_METHODS, PAYMENT_STATUSES, PAYMENT_RECORD_STATUSES, STOCK_LOG_TYPES, ADMIN_ROLES } from "./constants";
 
 export const loginSchema = z.object({
-  email: z.string().email("A valid email is required"),
+  email: z.string().email("Please enter a valid email address"),
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
@@ -21,44 +21,38 @@ export const resetPasswordSchema = z
     path: ["confirmPassword"],
   });
 
-
 export const subcategorySchema = z.object({
   _id: z.string().optional(),
   name: z.string().min(1, "Subcategory name is required"),
   slug: z.string().optional(),
   description: z.string().optional().default(""),
+  image: z.string().optional().default(""),
+  productCount: z.number().optional().default(0),
+  isActive: z.boolean().optional().default(true),
 });
 
 export const categorySchema = z.object({
-  name: z.string().min(2, "Category name is required"),
+  name: z.string().min(1, "Category name is required"),
   description: z.string().optional().default(""),
-  image: z.string().trim().min(1, "Category image is required"),
-  isActive: z.boolean().optional().default(true),
-  subcategories: z
-    .array(
-      z.union([
-        z.string().min(1),
-        subcategorySchema,
-      ])
-    )
-    .optional()
-    .default([]),
+  image: z.string().optional().default(""),
+  isFeatured: z.boolean().optional().default(false),
+  subcategories: z.array(z.union([z.string().min(1), subcategorySchema])).optional().default([]),
 });
 
 export const specificationSchema = z.object({
-  key: z.string().min(1),
-  value: z.string().min(1),
+  key: z.string().min(1, "Key is required"),
+  value: z.string().min(1, "Value is required"),
 });
 
 export const productSchema = z.object({
-  name: z.string().trim().min(1, "Product name is required"),
-  description: z.string().optional().default(""),
+  name: z.string().min(1, "Product name is required"),
+  description: z.string().min(1, "Description is required"),
   category: z.string().min(1, "Category is required"),
   subcategory: z.string().trim().optional().default(""),
   price: z.coerce.number({ message: "Price is required" }).min(0, "Price must be a positive number"),
   salePrice: z.coerce.number().min(0).optional().nullable(),
   sku: z.string().trim().min(1, "SKU / Product code is required"),
-  weight: z.coerce.number({ message: "Weight is required" }).min(0, "Weight must be 0 or more"),
+  weight: z.coerce.number({ message: "Weight is required" }).min(0, "Weight must be 0 or more").optional().default(0),
   images: z
     .array(z.string())
     .min(1, "At least 1 product image is required")
@@ -75,6 +69,7 @@ export const orderStatusSchema = z.object({
   status: z.enum(ORDER_STATUSES).optional(),
   paymentStatus: z.enum(PAYMENT_STATUSES).optional(),
   note: z.string().optional(),
+  shippingFee: z.coerce.number().min(0).optional(),
 });
 
 export const paymentStatusSchema = z.object({
@@ -119,16 +114,24 @@ export const settingsSchema = z.object({
     .optional(),
   inventorySettings: z
     .object({
-      defaultLowStockThreshold: z.coerce.number().optional().default(5),
-      allowBackorder: z.boolean().optional().default(false),
+      lowStockAlerts: z.boolean().optional().default(true),
+      outOfStockThreshold: z.coerce.number().optional().default(0),
+      hideOutOfStock: z.boolean().optional().default(false),
     })
     .optional(),
-  emailSettings: z
+  emailNotifications: z
     .object({
-      lowStockAlerts: z.boolean().optional().default(true),
-      newOrderAlerts: z.boolean().optional().default(true),
-      orderStatusUpdates: z.boolean().optional().default(true),
-      newCustomerAlerts: z.boolean().optional().default(true),
+      newOrder: z.boolean().optional().default(true),
+      lowStock: z.boolean().optional().default(true),
+      customerSignup: z.boolean().optional().default(false),
+      orderStatusUpdate: z.boolean().optional().default(true),
+    })
+    .optional(),
+  paymentGateways: z
+    .object({
+      codEnabled: z.boolean().optional().default(true),
+      bankTransferEnabled: z.boolean().optional().default(false),
+      bankDetails: z.string().optional().default(""),
     })
     .optional(),
 });
@@ -177,39 +180,37 @@ export const changePasswordSchema = z.object({
 });
 
 export const createOrderSchema = z.object({
-  customerId: z.string().min(1),
+  customerId: z.string().min(1, "Customer is required"),
   items: z
     .array(
       z.object({
         productId: z.string().min(1),
-        quantity: z.coerce.number().int().min(1),
+        quantity: z.coerce.number().int().positive(),
       })
     )
-    .min(1),
-  billingAddress: z.record(z.string(), z.string()).optional().default({}),
+    .min(1, "At least one item is required"),
   shippingAddress: z.record(z.string(), z.string()).optional().default({}),
-  paymentMethod: z.enum(PAYMENT_METHODS).optional().default("cod"),
-  paymentStatus: z.enum(PAYMENT_STATUSES).optional(),
-  status: z.enum(ORDER_STATUSES).optional(),
+  billingAddress: z.record(z.string(), z.string()).optional().default({}),
+  paymentMethod: z.enum(PAYMENT_METHODS),
   discount: z.coerce.number().min(0).optional().default(0),
   shippingFee: z.coerce.number().min(0).optional().default(0),
   tax: z.coerce.number().min(0).optional().default(0),
   notes: z.string().optional().default(""),
+  paymentStatus: z.enum(PAYMENT_STATUSES).optional(),
+  status: z.enum(ORDER_STATUSES).optional(),
 });
 
 export const inviteAdminSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
-  password: z.string().min(6),
   role: z.enum(ADMIN_ROLES),
 });
 
 export const expenseSchema = z.object({
   title: z.string().trim().min(1, "Title is required"),
   description: z.string().optional().default(""),
-  category: z.string().trim().min(1, "Category is required"),
-  amount: z.coerce.number().min(0.01, "Amount must be greater than 0"),
+  amount: z.coerce.number().positive("Amount must be greater than 0"),
+  category: z.string().min(1, "Category is required"),
   date: z.coerce.date().optional().default(() => new Date()),
   notes: z.string().optional().default(""),
 });
-

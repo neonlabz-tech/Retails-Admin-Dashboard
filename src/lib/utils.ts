@@ -14,17 +14,13 @@ export function slugify(text: string): string {
 
 export function formatCurrency(amount: number, currency = "LKR"): string {
   try {
-    const isNegative = (amount || 0) < 0;
-    const absVal = Math.round(Math.abs(amount || 0));
-    const formatted = absVal.toLocaleString("en-US", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
+    const formatted = (amount || 0).toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     });
-    return isNegative ? `-LKR ${formatted}` : `LKR ${formatted}`;
+    return `LKR ${formatted}`;
   } catch {
-    const isNegative = (amount || 0) < 0;
-    const absVal = Math.round(Math.abs(amount || 0));
-    return isNegative ? `-LKR ${absVal}` : `LKR ${absVal}`;
+    return `LKR ${(amount || 0).toFixed(2)}`;
   }
 }
 
@@ -46,28 +42,16 @@ export function formatDateTime(date: Date | string | undefined | null): string {
   });
 }
 
-export function formatOrderId(orderNumber?: string, createdAt?: Date | string | null): string {
-  if (orderNumber && typeof orderNumber === "string" && orderNumber.trim()) {
-    return orderNumber.trim();
-  }
-  if (createdAt) {
-    const d = new Date(createdAt);
-    if (!isNaN(d.getTime())) {
-      const day = d.getDate().toString().padStart(2, "0");
-      const m = (d.getMonth() + 1).toString().padStart(2, "0");
-      const y = d.getFullYear().toString().slice(-2);
-      return `ORD-${day}${m}${y}`;
-    }
-  }
-  return "-";
+export function formatOrderId(orderNumber?: string, _createdAt?: Date | string | null): string {
+  return orderNumber || "-";
 }
 
 export async function generateOrderNumber(date = new Date()): Promise<string> {
-  const day = date.getDate().toString().padStart(2, "0");
+  const d = date.getDate().toString().padStart(2, "0");
   const m = (date.getMonth() + 1).toString().padStart(2, "0");
   const y = date.getFullYear().toString().slice(-2);
   const rand = Math.floor(1000 + Math.random() * 9000);
-  return `ORD-${day}${m}${y}-${rand}`;
+  return `ORD-${d}${m}${y}-${rand}`;
 }
 
 export function getPaginationParams(searchParams: URLSearchParams) {

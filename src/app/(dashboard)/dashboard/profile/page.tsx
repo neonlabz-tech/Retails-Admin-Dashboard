@@ -1,14 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Save, KeyRound, UserCircle, Mail, CheckCircle2 } from "lucide-react";
+import { Save, KeyRound, UserCircle, Mail } from "lucide-react";
 import { Button, Card, Input, LoadingState, Badge } from "@/components/ui/primitives";
 import { ImageUploader } from "@/components/ui/image-uploader";
 import { useToast } from "@/components/ui/toast";
 import { ROLE_LABELS, type AdminRole } from "@/lib/constants";
 import { formatDateTime } from "@/lib/utils";
-import { validateName, validateEmail } from "@/lib/validators";
 
 interface AdminProfile {
   id: string;
@@ -21,14 +19,11 @@ interface AdminProfile {
 }
 
 export default function ProfilePage() {
-  const router = useRouter();
   const toast = useToast();
   const [profile, setProfile] = useState<AdminProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [profileErrors, setProfileErrors] = useState<{ name?: string; email?: string }>({});
   const [sendingReset, setSendingReset] = useState(false);
-  const [resetEmailSent, setResetEmailSent] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -46,40 +41,19 @@ export default function ProfilePage() {
 
   async function handleSaveProfile() {
     if (!profile) return;
-    const nameError = validateName(profile.name);
-    const emailError = validateEmail(profile.email);
-    setProfileErrors({ name: nameError, email: emailError });
-    if (nameError || emailError) return;
-
     setSaving(true);
     try {
       const res = await fetch("/api/auth/me", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: profile.name.trim(),
-          email: profile.email.trim(),
-          avatar: profile.avatar,
-        }),
+        body: JSON.stringify({ name: profile.name, email: profile.email, avatar: profile.avatar }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) {
-        if (json.errors) {
-          setProfileErrors({
-            name: json.errors.name?.[0],
-            email: json.errors.email?.[0],
-          });
-        } else if (res.status === 409) {
-          setProfileErrors((prev) => ({ ...prev, email: "This email address is already in use" }));
-        } else {
-          toast.error(json.message || "Failed to update profile");
-        }
+        toast.error(json.message || "Failed to update profile");
         return;
       }
-      setProfileErrors({});
       toast.success("Profile updated successfully");
-      window.dispatchEvent(new Event("admin-profile-updated"));
-      router.refresh();
     } finally {
       setSaving(false);
     }
@@ -96,13 +70,15 @@ export default function ProfilePage() {
       });
       const json = await res.json();
       if (!res.ok || !json.success) {
-        toast.error(json.message || "Failed to send reset link");
+        toast.error(json.message || "Failed to send password reset email");
         return;
       }
-      setResetEmailSent(true);
-      toast.success("Password reset link sent to " + profile.email);
+      if (json.data?.resetUrl) {
+        console.log("🔗 Password Reset Link:", json.data.resetUrl);
+      }
+      toast.success(json.message || "Password reset email sent successfully");
     } catch {
-      toast.error("Failed to send reset link. Please try again.");
+      toast.error("Failed to send password reset email. Please try again.");
     } finally {
       setSendingReset(false);
     }
@@ -114,7 +90,7 @@ export default function ProfilePage() {
     <div className="flex flex-col gap-4">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">Admin Profile</h1>
-        <p className="mt-0.5 text-xs sm:text-sm text-slate-500">Manage your personal account information.</p>
+        <p className="mt-0.5 text-xs sm:text-sm text-slate-500">Manage your personal account information and security.</p>
       </div>
 
       <Card className="p-6">
@@ -135,27 +111,8 @@ export default function ProfilePage() {
             <UserCircle className="h-4 w-4" /> Personal Information
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input
-              label="Full name"
-              value={profile.name}
-              onChange={(e) => {
-                const val = e.target.value;
-                setProfile({ ...profile, name: val });
-                setProfileErrors((prev) => ({ ...prev, name: validateName(val) }));
-              }}
-              error={profileErrors.name}
-            />
-            <Input
-              label="Email address"
-              type="email"
-              value={profile.email}
-              onChange={(e) => {
-                const val = e.target.value;
-                setProfile({ ...profile, email: val });
-                setProfileErrors((prev) => ({ ...prev, email: validateEmail(val) }));
-              }}
-              error={profileErrors.email}
-            />
+            <Input label="Full name" value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
+            <Input label="Email address" type="email" value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} />
           </div>
           <div>
             <Button onClick={handleSaveProfile} loading={saving}>
@@ -167,26 +124,22 @@ export default function ProfilePage() {
 
       <Card className="p-6">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-          <KeyRound className="h-4 w-4 text-slate-500" /> Change Password
+          <KeyRound className="h-4 w-4 text-slate-700" />
+          <span>Change Password</span>
         </div>
-        <p className="mt-1 text-xs sm:text-sm text-slate-500 max-w-xl leading-relaxed">
-          Need to update your password? Click below to send a secure password reset link to your registered email (
-          <span className="font-semibold text-slate-700">{profile.email}</span>).
+        <p className="mt-2 text-xs sm:text-sm text-slate-600 leading-relaxed">
+          Need to update your password? Click below to send a secure password reset link to your registered email (<strong className="font-semibold text-slate-900">{profile.email}</strong>).
         </p>
-
-        {resetEmailSent && (
-          <div className="mt-4 flex items-center gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-xs sm:text-sm text-emerald-800 shadow-2xs">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-            <span>
-              Reset link sent! Please check your inbox for instructions to set your new password.
-            </span>
-          </div>
-        )}
-
-        <div className="mt-5">
-          <Button onClick={handleSendResetEmail} loading={sendingReset} variant="secondary">
-            <Mail className="h-4 w-4" />
-            {resetEmailSent ? "Resend Reset Link" : "Send Password Reset Email"}
+        <div className="mt-4">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={handleSendResetEmail}
+            loading={sendingReset}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200/80 bg-slate-100/80 px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-700 hover:bg-slate-200/70 hover:text-slate-900 transition shadow-none cursor-pointer"
+          >
+            <Mail className="h-4 w-4 text-slate-500" />
+            <span>Send Password Reset Email</span>
           </Button>
         </div>
       </Card>

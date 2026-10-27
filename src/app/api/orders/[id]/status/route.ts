@@ -3,8 +3,6 @@ import { connectDB } from "@/lib/db";
 import { Order } from "@/models/Order";
 import { Product } from "@/models/Product";
 import { Payment } from "@/models/Payment";
-import { StockLog } from "@/models/StockLog";
-import { getSession } from "@/lib/auth";
 import { orderStatusSchema } from "@/lib/validators";
 import { apiError, apiSuccess, handleApiError } from "@/lib/api-utils";
 import { notifyOrderStatusChange } from "@/lib/notify";
@@ -16,59 +14,33 @@ interface Params {
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
     await connectDB();
-    const session = await getSession();
     const { id } = await params;
     const body = await request.json();
-    const { status, paymentStatus, note } = orderStatusSchema.parse(body);
+    const { status, paymentStatus, note, shippingFee } = orderStatusSchema.parse(body);
 
     const order = await Order.findById(id);
     if (!order) return apiError("Order not found", 404);
 
     const previousStatus = order.status;
 
+    // Validate shipping fee is required when status is shipped
+    if (status === "shipped") {
+      if (shippingFee === undefined || typeof shippingFee !== "number" || isNaN(shippingFee) || shippingFee < 0) {
+        return apiError("Shipping fee is required when marking order as shipped", 400);
+      }
+    }
+
+    // If shipping fee is updated, adjust shippingFee and recalculate order total
+    if (typeof shippingFee === "number" && !isNaN(shippingFee) && shippingFee >= 0) {
+      order.shippingFee = shippingFee;
+      const subtotal = order.subtotal ?? 0;
+      const discount = order.discount ?? 0;
+      order.total = Math.max(0, subtotal - discount + shippingFee);
+    }
+
     if (status && status === "cancelled" && previousStatus !== "cancelled") {
       for (const item of order.items) {
-        const prod = await Product.findByIdAndUpdate(
-          item.product,
-          { $inc: { stock: item.quantity, totalSold: -item.quantity } },
-          { new: false }
-        );
-        if (prod) {
-          const prev = prod.stock;
-          const next = prev + item.quantity;
-          await StockLog.create({
-            product: prod._id,
-            productName: prod.name,
-            type: "return",
-            quantity: item.quantity,
-            previousStock: prev,
-            newStock: next,
-            reason: `Order ${order.orderNumber} cancelled`,
-            ...(session ? { admin: session.adminId, adminName: session.name } : { adminName: "System" }),
-          });
-        }
-      }
-    } else if (status && status !== "cancelled" && previousStatus === "cancelled") {
-      for (const item of order.items) {
-        const prod = await Product.findByIdAndUpdate(
-          item.product,
-          { $inc: { stock: -item.quantity, totalSold: item.quantity } },
-          { new: false }
-        );
-        if (prod) {
-          const prev = prod.stock;
-          const next = prev - item.quantity;
-          await StockLog.create({
-            product: prod._id,
-            productName: prod.name,
-            type: "sale",
-            quantity: item.quantity,
-            previousStock: prev,
-            newStock: next,
-            reason: `Order ${order.orderNumber} restored / re-activated`,
-            ...(session ? { admin: session.adminId, adminName: session.name } : { adminName: "System" }),
-          });
-        }
+        await Product.findByIdAndUpdate(item.product, { $inc: { stock: item.quantity, totalSold: -item.quantity } });
       }
     }
 
@@ -80,7 +52,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     let finalStatus = status;
     const effectivePayment = finalPaymentStatus || order.paymentStatus;
-    if (effectivePayment === "pending" && !finalStatus) {
+    if (effectivePayment === "pending" && (!finalStatus || finalStatus === "pending")) {
       finalStatus = "processing";
     }
 
@@ -89,17 +61,20 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       order.statusHistory.push({ status: finalStatus, changedAt: new Date(), note });
     }
 
-    if (finalPaymentStatus) {
-      order.paymentStatus = finalPaymentStatus;
+    if (finalPaymentStatus || shippingFee !== undefined) {
+      if (finalPaymentStatus) {
+        order.paymentStatus = finalPaymentStatus;
+      }
+      const effectivePayStatus = finalPaymentStatus || order.paymentStatus;
       const paymentRecordStatus =
-        finalPaymentStatus === "paid"
+        effectivePayStatus === "paid"
           ? "completed"
-          : finalPaymentStatus === "failed"
-          ? "cancelled"
-          : finalPaymentStatus === "refunded"
+          : effectivePayStatus === "failed"
+          ? "failed"
+          : effectivePayStatus === "refunded"
           ? "refunded"
           : "pending";
-      await Payment.findOneAndUpdate(
+      await Payment.updateOne(
         { order: order._id },
         {
           $set: {
@@ -108,7 +83,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             amount: order.total,
             method: order.paymentMethod || "cod",
             status: paymentRecordStatus,
-            ...(finalPaymentStatus === "paid" ? { paidAt: new Date() } : {}),
+            ...(effectivePayStatus === "paid" ? { paidAt: new Date() } : {}),
           },
           $setOnInsert: {
             gateway: order.paymentMethod === "cod" ? "cod" : "manual",
@@ -119,7 +94,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       );
     }
 
-    await order.save({ validateModifiedOnly: true });
+    await order.save();
 
     if (finalStatus) {
       await notifyOrderStatusChange(
@@ -127,7 +102,22 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         finalStatus,
         order.customerSnapshot?.email || "",
         order.customerSnapshot?.name || "Customer",
-        order._id.toString()
+        order._id.toString(),
+        {
+          subtotal: order.subtotal,
+          shippingFee: order.shippingFee,
+          discount: order.discount,
+          total: order.total,
+          paymentMethod: order.paymentMethod,
+          shippingAddress: order.shippingAddress,
+          customerSnapshot: order.customerSnapshot,
+          note,
+          items: order.items?.map((it) => ({
+            name: it.name,
+            quantity: it.quantity,
+            price: it.price,
+          })),
+        }
       );
     }
 

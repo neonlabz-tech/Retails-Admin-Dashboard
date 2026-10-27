@@ -36,6 +36,9 @@ export async function GET(request: NextRequest) {
         e.setHours(23, 59, 59, 999);
         return { startDate: s, endDate: e };
       }
+      if (tf === "all-time") {
+        return { startDate: new Date(2020, 0, 1), endDate: new Date(2099, 11, 31, 23, 59, 59, 999) };
+      }
       if (tf === "this-week") {
         const day = refDate.getDay();
         const diffToMonday = (day === 0 ? -6 : 1) - day;
@@ -187,7 +190,7 @@ export async function GET(request: NextRequest) {
     const totalRevenue = paidRevenueAgg[0]?.totalRevenue || 0;
     const totalExpenses = expensesAgg[0]?.totalExpenses || 0;
     const netProfit = totalRevenue - totalExpenses;
-    const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : "0";
+    const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) + "%" : "0%";
 
     // Format Expenses by Category with percentage
     const categoryColors: Record<string, string> = {

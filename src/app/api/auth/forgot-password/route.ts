@@ -1,61 +1,73 @@
-import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
+import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Admin } from "@/models/Admin";
-import { forgotPasswordSchema } from "@/lib/validators";
-import { handleApiError } from "@/lib/api-utils";
+import { signResetToken, getSession } from "@/lib/auth";
 import { sendEmail, emailTemplates } from "@/lib/email";
+import { apiError, apiSuccess, handleApiError } from "@/lib/api-utils";
 
 export async function POST(request: NextRequest) {
   try {
     await connectDB();
-    const body = await request.json();
-    const { email } = forgotPasswordSchema.parse(body);
+    const session = await getSession();
+    let email: string | undefined;
 
-    const normalizedEmail = email.toLowerCase().trim();
-    const admin = await Admin.findOne({ email: normalizedEmail });
-
-    // Anti-enumeration: If admin not found or inactive, respond with generic success
-    if (!admin || !admin.isActive) {
-      return NextResponse.json({
-        success: true,
-        message: "If an account exists with that email, a password reset link has been sent.",
-      });
+    try {
+      const body = await request.json();
+      email = body.email;
+    } catch {
+      // Body might be empty if called without payload
     }
 
-    // Generate secure 32-byte hex token and store SHA-256 hash in DB
-    const rawToken = crypto.randomBytes(32).toString("hex");
-    const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
+    if (!email && session?.email) {
+      email = session.email;
+    }
 
-    // Token expires in 1 hour
-    const tokenExpiry = new Date(Date.now() + 60 * 60 * 1000);
+    let admin = null;
+    if (email) {
+      admin = await Admin.findOne({ email: email.toLowerCase().trim() });
+    }
+    if (!admin && session?.adminId) {
+      admin = await Admin.findById(session.adminId);
+    }
 
-    await Admin.updateOne(
-      { _id: admin._id },
-      { $set: { resetPasswordToken: hashedToken, resetPasswordExpires: tokenExpiry } }
-    );
+    if (!admin) {
+      // Don't disclose whether an admin exists for security, return generic success
+      return apiSuccess(null, "If an account exists with this email, a password reset link has been sent.");
+    }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
-    const resetUrl = `${baseUrl}/reset-password?token=${rawToken}`;
+    if (!admin.isActive) {
+      return apiError("This admin account is currently inactive.", 403);
+    }
 
-    console.log("\n🔗 [Password Reset Link]:", resetUrl, "\n");
+    const token = await signResetToken({
+      adminId: admin.id,
+      email: admin.email,
+    });
 
-    const emailResult = await sendEmail({
+    const origin =
+      request.headers.get("origin") ||
+      request.nextUrl.origin ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      "http://localhost:3000";
+
+    const resetUrl = `${origin}/reset-password?token=${encodeURIComponent(token)}`;
+
+    console.log(`[forgot-password] Password reset link for ${admin.email}: ${resetUrl}`);
+
+    const { sent, error } = await sendEmail({
       to: admin.email,
-      subject: "Reset your password",
-      html: emailTemplates.passwordReset(resetUrl),
+      subject: "Reset your RKF Admin password",
+      html: emailTemplates.passwordReset(admin.name, resetUrl),
     });
 
-    if (!emailResult.sent && emailResult.error) {
-      console.error("❌ [forgot-password] Email failed to send via Resend:", emailResult.error);
-    } else {
-      console.log("✅ [forgot-password] Email successfully dispatched via Resend to:", admin.email);
+    if (!sent && error) {
+      console.warn(`[forgot-password] Email delivery note: ${error}`);
     }
 
-    return NextResponse.json({
-      success: true,
-      message: "If an account exists with that email, a password reset link has been sent.",
-    });
+    return apiSuccess(
+      { resetUrl: process.env.NODE_ENV !== "production" ? resetUrl : undefined },
+      "Password reset link has been sent to your registered email."
+    );
   } catch (err) {
     return handleApiError(err);
   }
