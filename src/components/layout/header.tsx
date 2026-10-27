@@ -111,25 +111,38 @@ export function Header({ onMenuClick, admin }: HeaderProps) {
 
   useEffect(() => {
     let active = true;
+    let lastFetched = 0;
+
     async function loadUnread() {
       try {
         const res = await fetch("/api/notifications?unreadOnly=true&limit=1");
         const json = await res.json();
         if (active && json.success) {
           setUnread(json.data.unreadCount ?? json.data.meta?.total ?? 0);
+          lastFetched = Date.now();
         }
       } catch {
         /* ignore */
       }
     }
+
     loadUnread();
-    const interval = setInterval(loadUnread, 20000);
+
     const onNotificationsUpdated = () => loadUnread();
+    const onFocus = () => {
+      // Only refresh on tab focus if at least 60 seconds have passed since last fetch
+      if (Date.now() - lastFetched > 60000) {
+        loadUnread();
+      }
+    };
+
     window.addEventListener("notifications-updated", onNotificationsUpdated);
+    window.addEventListener("focus", onFocus);
+
     return () => {
       active = false;
-      clearInterval(interval);
       window.removeEventListener("notifications-updated", onNotificationsUpdated);
+      window.removeEventListener("focus", onFocus);
     };
   }, []);
 

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Product } from "@/models/Product";
 import { apiSuccess, handleApiError } from "@/lib/api-utils";
-import { getPaginationParams, buildPaginationMeta } from "@/lib/utils";
+import { getPaginationParams, buildPaginationMeta, escapeRegex } from "@/lib/utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,7 +14,8 @@ export async function GET(request: NextRequest) {
 
     const filter: Record<string, unknown> = {};
     if (search) {
-      filter.$or = [{ name: { $regex: search, $options: "i" } }, { sku: { $regex: search, $options: "i" } }];
+      const escaped = escapeRegex(search);
+      filter.$or = [{ name: { $regex: escaped, $options: "i" } }, { sku: { $regex: escaped, $options: "i" } }];
     }
     if (stockFilter === "out") filter.stock = { $lte: 0 };
     if (stockFilter === "low") {

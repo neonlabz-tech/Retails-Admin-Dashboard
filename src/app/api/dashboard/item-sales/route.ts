@@ -46,8 +46,7 @@ export async function GET(req: NextRequest) {
     };
 
     // 3. Aggregation pipeline
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const pipeline: any[] = [
+    const pipeline: mongoose.PipelineStage[] = [
       { $match: matchOrder },
       { $unwind: "$items" },
       {

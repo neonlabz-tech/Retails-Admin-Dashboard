@@ -3,6 +3,8 @@ import { connectDB } from "@/lib/db";
 import { Order } from "@/models/Order";
 import { Product } from "@/models/Product";
 import { Payment } from "@/models/Payment";
+import { StockLog } from "@/models/StockLog";
+import { getSession } from "@/lib/auth";
 import { orderStatusSchema } from "@/lib/validators";
 import { apiError, apiSuccess, handleApiError } from "@/lib/api-utils";
 import { notifyOrderStatusChange } from "@/lib/notify";
@@ -14,6 +16,7 @@ interface Params {
 export async function PATCH(request: NextRequest, { params }: Params) {
   try {
     await connectDB();
+    const session = await getSession();
     const { id } = await params;
     const body = await request.json();
     const { status, paymentStatus, note } = orderStatusSchema.parse(body);
@@ -25,7 +28,47 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     if (status && status === "cancelled" && previousStatus !== "cancelled") {
       for (const item of order.items) {
-        await Product.findByIdAndUpdate(item.product, { $inc: { stock: item.quantity, totalSold: -item.quantity } });
+        const prod = await Product.findByIdAndUpdate(
+          item.product,
+          { $inc: { stock: item.quantity, totalSold: -item.quantity } },
+          { new: false }
+        );
+        if (prod) {
+          const prev = prod.stock;
+          const next = prev + item.quantity;
+          await StockLog.create({
+            product: prod._id,
+            productName: prod.name,
+            type: "return",
+            quantity: item.quantity,
+            previousStock: prev,
+            newStock: next,
+            reason: `Order ${order.orderNumber} cancelled`,
+            ...(session ? { admin: session.adminId, adminName: session.name } : { adminName: "System" }),
+          });
+        }
+      }
+    } else if (status && status !== "cancelled" && previousStatus === "cancelled") {
+      for (const item of order.items) {
+        const prod = await Product.findByIdAndUpdate(
+          item.product,
+          { $inc: { stock: -item.quantity, totalSold: item.quantity } },
+          { new: false }
+        );
+        if (prod) {
+          const prev = prod.stock;
+          const next = prev - item.quantity;
+          await StockLog.create({
+            product: prod._id,
+            productName: prod.name,
+            type: "sale",
+            quantity: item.quantity,
+            previousStock: prev,
+            newStock: next,
+            reason: `Order ${order.orderNumber} restored / re-activated`,
+            ...(session ? { admin: session.adminId, adminName: session.name } : { adminName: "System" }),
+          });
+        }
       }
     }
 
@@ -37,7 +80,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     let finalStatus = status;
     const effectivePayment = finalPaymentStatus || order.paymentStatus;
-    if (effectivePayment === "pending" && (!finalStatus || finalStatus === "pending")) {
+    if (effectivePayment === "pending" && !finalStatus) {
       finalStatus = "processing";
     }
 
@@ -56,19 +99,36 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           : finalPaymentStatus === "refunded"
           ? "refunded"
           : "pending";
-      await Payment.updateOne(
+      await Payment.findOneAndUpdate(
         { order: order._id },
         {
-          status: paymentRecordStatus,
-          ...(finalPaymentStatus === "paid" ? { paidAt: new Date() } : {}),
-        }
+          $set: {
+            orderNumber: order.orderNumber,
+            customer: order.customer,
+            amount: order.total,
+            method: order.paymentMethod || "cod",
+            status: paymentRecordStatus,
+            ...(finalPaymentStatus === "paid" ? { paidAt: new Date() } : {}),
+          },
+          $setOnInsert: {
+            gateway: order.paymentMethod === "cod" ? "cod" : "manual",
+            createdAt: order.createdAt,
+          },
+        },
+        { upsert: true }
       );
     }
 
-    await order.save();
+    await order.save({ validateModifiedOnly: true });
 
     if (finalStatus) {
-      await notifyOrderStatusChange(order.orderNumber, finalStatus, order.customerSnapshot.email, order.customerSnapshot.name);
+      await notifyOrderStatusChange(
+        order.orderNumber,
+        finalStatus,
+        order.customerSnapshot?.email || "",
+        order.customerSnapshot?.name || "Customer",
+        order._id.toString()
+      );
     }
 
     return apiSuccess(order, "Order updated successfully");

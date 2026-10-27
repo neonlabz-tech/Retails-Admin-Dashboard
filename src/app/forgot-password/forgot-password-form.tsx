@@ -56,7 +56,7 @@ export function ForgotPasswordForm() {
         </div>
 
         <p className="mt-6 text-xs text-slate-500 leading-relaxed">
-          Didn't receive the email? Check your spam folder or{" "}
+          Didn&apos;t receive the email? Check your spam folder or{" "}
           <button
             type="button"
             onClick={() => setSentEmail(null)}

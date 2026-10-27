@@ -26,9 +26,46 @@ export async function GET(request: NextRequest) {
     if (status) filter.status = status === "cancelled" ? { $in: ["cancelled", "failed"] } : status;
     if (method) filter.method = method;
 
+    // Automatically ensure payment records exist for all orders (e.g. placed via customer storefront)
+    const existingPaymentOrderIds = await Payment.distinct("order");
+    const missingOrders = await Order.find({ _id: { $nin: existingPaymentOrderIds } });
+
+    if (missingOrders.length > 0) {
+      const newPayments = missingOrders.map((order) => {
+        const paymentRecordStatus =
+          order.paymentStatus === "paid"
+            ? "completed"
+            : order.paymentStatus === "failed"
+            ? "cancelled"
+            : order.paymentStatus === "refunded"
+            ? "refunded"
+            : "pending";
+
+        return {
+          order: order._id,
+          orderNumber: order.orderNumber,
+          customer: order.customer,
+          amount: order.total,
+          method: order.paymentMethod || "cod",
+          status: paymentRecordStatus,
+          gateway: order.paymentMethod === "cod" ? "cod" : "manual",
+          paidAt: order.paymentStatus === "paid" ? order.updatedAt || order.createdAt : undefined,
+          createdAt: order.createdAt,
+          updatedAt: order.updatedAt,
+        };
+      });
+
+      try {
+        await Payment.insertMany(newPayments, { ordered: false });
+      } catch (err) {
+        console.warn("[payments] Bulk insert warning:", err);
+      }
+    }
+
     const [payments, total, summary] = await Promise.all([
       Payment.find(filter)
         .populate("customer", "name email")
+        .populate("order", "customerSnapshot")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),

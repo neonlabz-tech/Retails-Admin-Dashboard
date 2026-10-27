@@ -67,7 +67,7 @@ export async function GET(req: Request) {
     }
 
     await Order.updateMany(
-      { paymentStatus: "pending", status: "pending" },
+      { status: { $in: ["pending", "refunded"] } as any },
       { $set: { status: "processing" } }
     );
 
@@ -75,7 +75,6 @@ export async function GET(req: Request) {
       totalProducts,
       totalCustomers,
       totalOrders,
-      pendingOrders,
       confirmedOrders,
       processingOrders,
       shippedOrders,
@@ -94,7 +93,6 @@ export async function GET(req: Request) {
       Product.countDocuments(),
       Customer.countDocuments(),
       Order.countDocuments(),
-      Order.countDocuments({ status: "pending" }),
       Order.countDocuments({ status: "confirmed" }),
       Order.countDocuments({ status: "processing" }),
       Order.countDocuments({ status: "shipped" }),
@@ -144,7 +142,6 @@ export async function GET(req: Request) {
     };
 
     const ordersByStatus = [
-      { status: "pending", count: pendingOrders },
       { status: "confirmed", count: confirmedOrders },
       { status: "processing", count: processingOrders },
       { status: "shipped", count: shippedOrders },
@@ -173,7 +170,7 @@ export async function GET(req: Request) {
         availableStock: stockAgg[0]?.totalStock || 0,
         lowStockProducts,
         outOfStockProducts,
-        pendingOrders,
+        pendingOrders: processingOrders,
         completedOrders: deliveredOrders,
         cancelledOrders,
       },

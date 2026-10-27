@@ -1,7 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Bell, CheckCheck, Trash2, PackageX, PackageMinus, ShoppingBag, UserPlus, CreditCard, RefreshCcw, Info } from "lucide-react";
+import Link from "next/link";
+import {
+  Bell,
+  CheckCheck,
+  Trash2,
+  PackageX,
+  PackageMinus,
+  ShoppingBag,
+  UserPlus,
+  CreditCard,
+  RefreshCcw,
+  PackageCheck,
+  Truck,
+  Info,
+} from "lucide-react";
 import { Button, Card, EmptyState, LoadingState } from "@/components/ui/primitives";
 import { Pagination } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
@@ -18,13 +32,16 @@ interface NotificationRow {
   createdAt: string;
 }
 
-const ICONS: Record<NotificationType, React.ElementType> = {
+const ICONS: Record<string, React.ElementType> = {
   new_order: ShoppingBag,
   new_customer: UserPlus,
   low_stock: PackageMinus,
   out_of_stock: PackageX,
   payment_update: CreditCard,
   order_status: RefreshCcw,
+  order_delivered: PackageCheck,
+  order_update: Truck,
+  general: Info,
   system: Info,
 };
 
@@ -32,6 +49,7 @@ export default function NotificationsPage() {
   const toast = useToast();
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [markingAll, setMarkingAll] = useState(false);
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ total: 0, totalPages: 1, limit: 10 });
@@ -47,36 +65,46 @@ export default function NotificationsPage() {
       const res = await fetch(`/api/notifications?${params.toString()}`);
       const json = await res.json();
       if (json.success) {
-        setNotifications(json.data.notifications);
-        setMeta(json.data.meta);
+        setNotifications(json.data.notifications || []);
+        setMeta(json.data.meta || { total: 0, totalPages: 1, limit: 10 });
         setUnreadCount(json.data.unreadCount ?? 0);
       }
+    } catch {
+      toast.error("Failed to load notifications");
     } finally {
       setLoading(false);
     }
-  }, [filter, page]);
+  }, [filter, page, toast]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 
   async function toggleRead(n: NotificationRow) {
+    const nextRead = !n.isRead;
+    // Optimistic update
+    setNotifications((prev) =>
+      prev.map((item) => (item._id === n._id ? { ...item, isRead: nextRead } : item))
+    );
+    setUnreadCount((prev) => Math.max(0, prev + (nextRead ? -1 : 1)));
+
     try {
       const res = await fetch(`/api/notifications/${n._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isRead: !n.isRead }),
+        body: JSON.stringify({ isRead: nextRead }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) {
         toast.error(json.message || "Failed to update notification");
+        load();
         return;
       }
       window.dispatchEvent(new Event("notifications-updated"));
       load();
     } catch {
       toast.error("Failed to update notification");
+      load();
     }
   }
 
@@ -101,6 +129,11 @@ export default function NotificationsPage() {
   }
 
   async function markAllRead() {
+    setMarkingAll(true);
+    // Optimistically mark all in view as read
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    setUnreadCount(0);
+
     try {
       const res = await fetch("/api/notifications", {
         method: "PATCH",
@@ -110,6 +143,7 @@ export default function NotificationsPage() {
       const json = await res.json();
       if (!res.ok || !json.success) {
         toast.error(json.message || "Failed to mark notifications as read");
+        load();
         return;
       }
       toast.success("All notifications marked as read");
@@ -117,8 +151,13 @@ export default function NotificationsPage() {
       load();
     } catch {
       toast.error("Failed to mark notifications as read");
+      load();
+    } finally {
+      setMarkingAll(false);
     }
   }
+
+  const hasUnread = unreadCount > 0 || notifications.some((n) => !n.isRead);
 
   return (
     <div className="flex flex-col gap-4">
@@ -127,8 +166,14 @@ export default function NotificationsPage() {
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">Notifications</h1>
           <p className="mt-0.5 text-xs sm:text-sm text-slate-500">Stay on top of orders, stock alerts and customer activity.</p>
         </div>
-        <Button variant="outline" onClick={markAllRead} disabled={unreadCount === 0} className="shrink-0">
-          <CheckCheck className="h-4 w-4" /> Mark all as read
+        <Button
+          variant="outline"
+          onClick={markAllRead}
+          disabled={!hasUnread || markingAll}
+          className="shrink-0"
+        >
+          <CheckCheck className="h-4 w-4" />
+          {markingAll ? "Marking..." : "Mark all as read"}
         </Button>
       </div>
 
@@ -168,28 +213,37 @@ export default function NotificationsPage() {
           <div className="divide-y divide-slate-200/70">
             {notifications.map((n) => {
               const Icon = ICONS[n.type] || Info;
+              const isUnread = !n.isRead;
               return (
                 <div
                   key={n._id}
                   className={cn(
                     "flex items-start gap-3 px-5 py-4 transition-colors",
-                    !n.isRead ? "bg-[#d6e4f9]/85 border-l-4 border-l-brand" : "bg-white"
+                    isUnread ? "bg-[#d6e4f9]/85 border-l-4 border-l-brand" : "bg-white"
                   )}
                 >
                   <div
                     className={cn(
                       "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
-                      !n.isRead ? "bg-brand text-white shadow-xs" : "bg-brand/10 text-brand"
+                      isUnread ? "bg-brand text-white shadow-xs" : "bg-brand/10 text-brand"
                     )}
                   >
                     <Icon className="h-4.5 w-4.5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className={cn("text-sm", !n.isRead ? "font-semibold text-slate-900" : "font-medium text-slate-800")}>
-                      {n.title}
-                    </p>
-                    <p className={cn("text-sm", !n.isRead ? "text-slate-700" : "text-slate-500")}>{n.message}</p>
-                    <p className={cn("mt-1 text-xs", !n.isRead ? "text-slate-500 font-medium" : "text-slate-400")}>
+                    {n.link ? (
+                      <Link href={n.link} className="hover:underline">
+                        <p className={cn("text-sm", isUnread ? "font-semibold text-slate-900" : "font-medium text-slate-800")}>
+                          {n.title}
+                        </p>
+                      </Link>
+                    ) : (
+                      <p className={cn("text-sm", isUnread ? "font-semibold text-slate-900" : "font-medium text-slate-800")}>
+                        {n.title}
+                      </p>
+                    )}
+                    <p className={cn("text-sm", isUnread ? "text-slate-700" : "text-slate-500")}>{n.message}</p>
+                    <p className={cn("mt-1 text-xs", isUnread ? "text-slate-500 font-medium" : "text-slate-400")}>
                       {formatDateTime(n.createdAt)}
                     </p>
                   </div>

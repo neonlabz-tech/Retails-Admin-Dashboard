@@ -47,10 +47,12 @@ async function resolveConnection(): Promise<typeof mongoose> {
 
   if (primaryUri) {
     try {
-      return await mongoose.connect(primaryUri, {
-        serverSelectionTimeoutMS: 3500,
+      const conn = await mongoose.connect(primaryUri, {
+        serverSelectionTimeoutMS: 15000,
         bufferCommands: false,
       });
+      console.log(`[db] Connected to primary MONGODB_URI (${mongoose.connection.name})`);
+      return conn;
     } catch (err) {
       console.warn("[db] Failed to connect to primary MONGODB_URI, falling back:", (err as Error).message);
     }

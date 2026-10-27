@@ -4,7 +4,7 @@ import { Category } from "@/models/Category";
 import { Product } from "@/models/Product";
 import { categorySchema } from "@/lib/validators";
 import { apiSuccess, apiError, handleApiError } from "@/lib/api-utils";
-import { slugify, getPaginationParams, buildPaginationMeta } from "@/lib/utils";
+import { slugify, getPaginationParams, buildPaginationMeta, escapeRegex } from "@/lib/utils";
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     const { page, limit, skip } = getPaginationParams(searchParams);
 
     const filter: Record<string, unknown> = {};
-    if (search) filter.name = { $regex: search, $options: "i" };
+    if (search) filter.name = { $regex: escapeRegex(search), $options: "i" };
 
     const query = Category.find(filter).sort({ createdAt: -1 });
     const categories = all ? await query : await query.skip(skip).limit(limit);

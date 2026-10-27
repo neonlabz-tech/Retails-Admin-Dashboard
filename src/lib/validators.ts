@@ -58,7 +58,11 @@ export const productSchema = z.object({
   price: z.coerce.number({ message: "Price is required" }).min(0, "Price must be a positive number"),
   salePrice: z.coerce.number().min(0).optional().nullable(),
   sku: z.string().trim().min(1, "SKU / Product code is required"),
-  images: z.array(z.string()).optional().default([]),
+  weight: z.coerce.number({ message: "Weight is required" }).min(0, "Weight must be 0 or more"),
+  images: z
+    .array(z.string())
+    .min(1, "At least 1 product image is required")
+    .max(5, "A product can have a maximum of 5 images"),
   specifications: z.array(specificationSchema).optional().default([]),
   stock: z.coerce.number({ message: "Stock quantity is required" }).min(0, "Stock quantity must be 0 or more"),
   lowStockThreshold: z.coerce.number({ message: "Low alert threshold is required" }).min(0, "Low alert threshold must be 0 or more"),

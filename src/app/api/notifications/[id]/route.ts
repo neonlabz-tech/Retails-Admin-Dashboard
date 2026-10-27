@@ -15,7 +15,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     await connectDB();
     const { id } = await params;
     const { isRead } = schema.parse(await request.json());
-    const notification = await Notification.findByIdAndUpdate(id, { isRead }, { new: true });
+    const notification = await Notification.findByIdAndUpdate(
+      id,
+      { $set: { isRead, read: isRead } },
+      { new: true }
+    );
     if (!notification) return apiError("Notification not found", 404);
     return apiSuccess(notification, `Marked as ${isRead ? "read" : "unread"}`);
   } catch (err) {

@@ -53,8 +53,15 @@ export async function PATCH(request: NextRequest) {
         email: body.email ?? admin.email,
         avatar: body.avatar ?? admin.avatar,
       });
+      const newEmail = data.email.toLowerCase();
+      if (newEmail !== admin.email.toLowerCase()) {
+        const existing = await Admin.findOne({ email: newEmail, _id: { $ne: admin._id } });
+        if (existing) {
+          return apiError("This email is already in use by another account", 409);
+        }
+      }
       admin.name = data.name;
-      admin.email = data.email.toLowerCase();
+      admin.email = newEmail;
       admin.avatar = data.avatar ?? "";
       profileUpdated = true;
     }

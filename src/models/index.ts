@@ -8,3 +8,4 @@ export { Notification } from "./Notification";
 export { StockLog } from "./StockLog";
 export { Settings } from "./Settings";
 export { Expense } from "./Expense";
+export { Review } from "./Review";

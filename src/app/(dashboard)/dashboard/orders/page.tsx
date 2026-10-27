@@ -22,6 +22,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { Button, Badge, Card } from "@/components/ui/primitives";
 import { DataTable, type Column, Pagination, SearchInput } from "@/components/ui/table";
 import { Modal } from "@/components/ui/modal";
@@ -166,21 +167,24 @@ export default function OrdersPage() {
     return `${year}-${month}-${day}`;
   }
 
+  const todayStr = useMemo(() => toDateInputValue(new Date()), []);
+  const yesterdayStr = useMemo(() => {
+    const y = new Date();
+    y.setDate(y.getDate() - 1);
+    return toDateInputValue(y);
+  }, []);
+
   function applyPreset(preset: "today" | "yesterday" | "last7" | "thisMonth") {
     const now = new Date();
     setPage(1);
     if (preset === "today") {
-      const todayStr = toDateInputValue(now);
       setDateFrom(todayStr);
       setDateTo(todayStr);
       setSingleDate(todayStr);
     } else if (preset === "yesterday") {
-      const y = new Date();
-      y.setDate(y.getDate() - 1);
-      const yStr = toDateInputValue(y);
-      setDateFrom(yStr);
-      setDateTo(yStr);
-      setSingleDate(yStr);
+      setDateFrom(yesterdayStr);
+      setDateTo(yesterdayStr);
+      setSingleDate(yesterdayStr);
     } else if (preset === "last7") {
       const past = new Date();
       past.setDate(past.getDate() - 6);
@@ -216,10 +220,6 @@ export default function OrdersPage() {
 
   function getDateLabel(): string {
     if (!dateFrom && !dateTo) return "All dates";
-    const todayStr = toDateInputValue(new Date());
-    const y = new Date();
-    y.setDate(y.getDate() - 1);
-    const yesterdayStr = toDateInputValue(y);
 
     if (dateFrom && dateTo && dateFrom === dateTo) {
       if (dateFrom === todayStr) return "Today";
@@ -486,7 +486,7 @@ export default function OrdersPage() {
                           onClick={() => applyPreset("today")}
                           className={cn(
                             "rounded-xl px-3 py-2 text-xs font-medium text-left transition cursor-pointer",
-                            dateFrom === toDateInputValue(new Date()) && dateTo === toDateInputValue(new Date())
+                            dateFrom === todayStr && dateTo === todayStr
                               ? "bg-brand/10 text-brand font-semibold"
                               : "bg-slate-50 text-slate-700 hover:bg-brand/10 hover:text-brand"
                           )}
@@ -498,8 +498,7 @@ export default function OrdersPage() {
                           onClick={() => applyPreset("yesterday")}
                           className={cn(
                             "rounded-xl px-3 py-2 text-xs font-medium text-left transition cursor-pointer",
-                            dateFrom === toDateInputValue(new Date(Date.now() - 86400000)) &&
-                              dateTo === toDateInputValue(new Date(Date.now() - 86400000))
+                            dateFrom === yesterdayStr && dateTo === yesterdayStr
                               ? "bg-brand/10 text-brand font-semibold"
                               : "bg-slate-50 text-slate-700 hover:bg-brand/10 hover:text-brand"
                           )}
@@ -746,7 +745,14 @@ export default function OrdersPage() {
                           <div key={idx} className="p-3.5 sm:p-4 flex items-center gap-3 hover:bg-slate-50/50 transition">
                             <div className="h-12 w-12 rounded-xl bg-slate-100 border border-slate-200/80 flex items-center justify-center shrink-0 overflow-hidden">
                               {item.image ? (
-                                <img src={item.image} alt={item.name} className="h-full w-full object-cover" />
+                                <Image
+                                  src={item.image}
+                                  alt={item.name}
+                                  width={48}
+                                  height={48}
+                                  unoptimized
+                                  className="h-full w-full object-cover"
+                                />
                               ) : (
                                 <Package className="h-5 w-5 text-slate-400" />
                               )}

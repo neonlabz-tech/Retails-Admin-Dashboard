@@ -13,6 +13,7 @@ interface PaymentRow {
   _id: string;
   orderNumber: string;
   customer: { name: string; email: string } | null;
+  order?: { customerSnapshot?: { name: string; email: string } } | null;
   amount: number;
   method: string;
   status: string;
@@ -115,7 +116,7 @@ export default function PaymentsPage() {
           </div>
         ),
       },
-      { header: "Customer", key: "customer", render: (p) => p.customer?.name || "-" },
+      { header: "Customer", key: "customer", render: (p) => p.customer?.name || p.order?.customerSnapshot?.name || "-" },
       { header: "Amount", key: "amount", render: (p) => formatCurrency(p.amount) },
       { header: "Method", key: "method", render: (p) => <Badge color="blue">{p.method.replace("_", " ")}</Badge> },
       { header: "Status", key: "status", render: (p) => <Badge color={statusColors[p.status] || "slate"}>{p.status}</Badge> },
@@ -237,7 +238,7 @@ export default function PaymentsPage() {
               </div>
               <div className="rounded-lg bg-slate-50 p-3">
                 <p className="text-xs text-slate-400">Customer</p>
-                <p className="font-semibold text-slate-800">{detail.customer?.name || "-"}</p>
+                <p className="font-semibold text-slate-800">{detail.customer?.name || detail.order?.customerSnapshot?.name || "-"}</p>
               </div>
               <div className="rounded-lg bg-slate-50 p-3">
                 <p className="text-xs text-slate-400">Paid at</p>
