@@ -15,6 +15,8 @@ import {
   PackageCheck,
   Truck,
   Info,
+  ArrowRight,
+  ArrowUpRight,
 } from "lucide-react";
 import { Button, Card, EmptyState, LoadingState } from "@/components/ui/primitives";
 import { Pagination } from "@/components/ui/table";
@@ -32,28 +34,64 @@ interface NotificationRow {
   createdAt: string;
 }
 
-const ICONS: Record<string, React.ElementType> = {
+const ICONS: Record<NotificationType, React.ElementType> = {
   new_order: ShoppingBag,
   new_customer: UserPlus,
   low_stock: PackageMinus,
   out_of_stock: PackageX,
   payment_update: CreditCard,
   order_status: RefreshCcw,
-  order_delivered: PackageCheck,
-  order_update: Truck,
-  general: Info,
   system: Info,
 };
+
+function getNotificationDestination(n: NotificationRow): { href: string; label: string } | null {
+  // Check for order number in message or title (e.g. ORD-271026-1011)
+  const orderMatch =
+    n.message.match(/#?(ORD-[0-9A-Za-z-]+)/i) ||
+    n.title.match(/#?(ORD-[0-9A-Za-z-]+)/i);
+  const orderNum = orderMatch ? orderMatch[1].replace(/^#/, "") : "";
+
+  if (n.type === "new_order" || n.type === "order_status" || orderNum) {
+    const href = orderNum
+      ? `/dashboard/orders?search=${encodeURIComponent(orderNum)}`
+      : n.link || "/dashboard/orders";
+    return {
+      href,
+      label: orderNum ? `View Order #${orderNum}` : "View Order",
+    };
+  }
+
+  if (n.type === "new_customer") {
+    return {
+      href: n.link || "/dashboard/customers",
+      label: "View Customer",
+    };
+  }
+
+  if (n.type === "low_stock" || n.type === "out_of_stock") {
+    return {
+      href: n.link || "/dashboard/stock",
+      label: "View Inventory",
+    };
+  }
+
+  if (n.link) {
+    return {
+      href: n.link,
+      label: "View Details",
+    };
+  }
+
+  return null;
+}
 
 export default function NotificationsPage() {
   const toast = useToast();
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [markingAll, setMarkingAll] = useState(false);
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ total: 0, totalPages: 1, limit: 10 });
-  const [unreadCount, setUnreadCount] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,99 +103,69 @@ export default function NotificationsPage() {
       const res = await fetch(`/api/notifications?${params.toString()}`);
       const json = await res.json();
       if (json.success) {
-        setNotifications(json.data.notifications || []);
-        setMeta(json.data.meta || { total: 0, totalPages: 1, limit: 10 });
-        setUnreadCount(json.data.unreadCount ?? 0);
+        setNotifications(json.data.notifications);
+        setMeta(json.data.meta);
       }
-    } catch {
-      toast.error("Failed to load notifications");
     } finally {
       setLoading(false);
     }
-  }, [filter, page, toast]);
+  }, [filter, page]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  async function toggleRead(n: NotificationRow) {
-    const nextRead = !n.isRead;
-    // Optimistic update
+  async function markNotificationAsRead(n: NotificationRow) {
+    if (n.isRead) return;
+
+    // Optimistically mark as read in local state
     setNotifications((prev) =>
-      prev.map((item) => (item._id === n._id ? { ...item, isRead: nextRead } : item))
+      prev.map((item) => (item._id === n._id ? { ...item, isRead: true } : item))
     );
-    setUnreadCount((prev) => Math.max(0, prev + (nextRead ? -1 : 1)));
 
     try {
-      const res = await fetch(`/api/notifications/${n._id}`, {
+      await fetch(`/api/notifications/${n._id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isRead: nextRead }),
+        body: JSON.stringify({ isRead: true }),
       });
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        toast.error(json.message || "Failed to update notification");
-        load();
-        return;
-      }
       window.dispatchEvent(new Event("notifications-updated"));
-      load();
     } catch {
-      toast.error("Failed to update notification");
-      load();
+      /* ignore */
     }
   }
 
+  async function toggleRead(n: NotificationRow) {
+    const res = await fetch(`/api/notifications/${n._id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isRead: !n.isRead }),
+    });
+    const json = await res.json();
+    if (json.success) load();
+  }
+
   async function remove(n: NotificationRow) {
-    try {
-      const res = await fetch(`/api/notifications/${n._id}`, { method: "DELETE" });
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        toast.error(json.message || "Failed to delete notification");
-        return;
-      }
+    const res = await fetch(`/api/notifications/${n._id}`, { method: "DELETE" });
+    const json = await res.json();
+    if (json.success) {
       toast.success("Notification deleted");
-      window.dispatchEvent(new Event("notifications-updated"));
-      if (notifications.length === 1 && page > 1) {
-        setPage((p) => p - 1);
-      } else {
-        load();
-      }
-    } catch {
-      toast.error("Failed to delete notification");
+      load();
     }
   }
 
   async function markAllRead() {
-    setMarkingAll(true);
-    // Optimistically mark all in view as read
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-    setUnreadCount(0);
-
-    try {
-      const res = await fetch("/api/notifications", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "mark-all-read" }),
-      });
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        toast.error(json.message || "Failed to mark notifications as read");
-        load();
-        return;
-      }
+    const res = await fetch("/api/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "mark-all-read" }),
+    });
+    const json = await res.json();
+    if (json.success) {
       toast.success("All notifications marked as read");
-      window.dispatchEvent(new Event("notifications-updated"));
       load();
-    } catch {
-      toast.error("Failed to mark notifications as read");
-      load();
-    } finally {
-      setMarkingAll(false);
     }
   }
-
-  const hasUnread = unreadCount > 0 || notifications.some((n) => !n.isRead);
 
   return (
     <div className="flex flex-col gap-4">
@@ -166,14 +174,8 @@ export default function NotificationsPage() {
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">Notifications</h1>
           <p className="mt-0.5 text-xs sm:text-sm text-slate-500">Stay on top of orders, stock alerts and customer activity.</p>
         </div>
-        <Button
-          variant="outline"
-          onClick={markAllRead}
-          disabled={!hasUnread || markingAll}
-          className="shrink-0"
-        >
-          <CheckCheck className="h-4 w-4" />
-          {markingAll ? "Marking..." : "Mark all as read"}
+        <Button variant="outline" onClick={markAllRead} className="shrink-0">
+          <CheckCheck className="h-4 w-4" /> Mark all as read
         </Button>
       </div>
 
@@ -183,23 +185,11 @@ export default function NotificationsPage() {
             key={f}
             onClick={() => { setFilter(f); setPage(1); }}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-medium transition capitalize cursor-pointer",
-              filter === f
-                ? "bg-brand text-white shadow-xs"
-                : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shadow-2xs"
+              "rounded-lg px-3.5 py-1.5 text-sm font-medium transition capitalize",
+              filter === f ? "bg-brand text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             )}
           >
-            <span>{f}</span>
-            {f === "unread" && unreadCount > 0 && (
-              <span
-                className={cn(
-                  "rounded-full px-1.5 py-0.5 text-[11px] font-bold leading-none",
-                  filter === "unread" ? "bg-white text-brand" : "bg-brand text-white"
-                )}
-              >
-                {unreadCount}
-              </span>
-            )}
+            {f}
           </button>
         ))}
       </div>
@@ -210,47 +200,103 @@ export default function NotificationsPage() {
         ) : notifications.length === 0 ? (
           <EmptyState icon={<Bell className="h-10 w-10" />} title="No notifications" description="You're all caught up!" />
         ) : (
-          <div className="divide-y divide-slate-200/70">
+          <div className="divide-y divide-slate-100">
             {notifications.map((n) => {
               const Icon = ICONS[n.type] || Info;
               const isUnread = !n.isRead;
+              const destination = getNotificationDestination(n);
               return (
                 <div
                   key={n._id}
                   className={cn(
-                    "flex items-start gap-3 px-5 py-4 transition-colors",
-                    isUnread ? "bg-[#d6e4f9]/85 border-l-4 border-l-brand" : "bg-white"
+                    "flex items-start gap-3.5 px-5 py-4 transition-colors",
+                    isUnread
+                      ? "bg-blue-50/70 border-l-4 border-l-brand"
+                      : "bg-white hover:bg-slate-50/50"
                   )}
                 >
                   <div
                     className={cn(
-                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
-                      isUnread ? "bg-brand text-white shadow-xs" : "bg-brand/10 text-brand"
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors",
+                      isUnread
+                        ? "bg-brand text-white shadow-xs"
+                        : "bg-slate-100 text-slate-500"
                     )}
                   >
                     <Icon className="h-4.5 w-4.5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    {n.link ? (
-                      <Link href={n.link} className="hover:underline">
-                        <p className={cn("text-sm", isUnread ? "font-semibold text-slate-900" : "font-medium text-slate-800")}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {destination ? (
+                        <Link
+                          href={destination.href}
+                          onClick={() => markNotificationAsRead(n)}
+                          className="group/link inline-flex items-center gap-1.5 hover:underline"
+                        >
+                          <p
+                            className={cn(
+                              "text-sm transition-colors group-hover/link:text-brand",
+                              isUnread ? "font-bold text-slate-900" : "font-medium text-slate-800"
+                            )}
+                          >
+                            {n.title}
+                          </p>
+                          <ArrowUpRight className="h-3.5 w-3.5 text-slate-400 group-hover/link:text-brand transition-colors" />
+                        </Link>
+                      ) : (
+                        <p
+                          className={cn(
+                            "text-sm",
+                            isUnread ? "font-bold text-slate-900" : "font-medium text-slate-800"
+                          )}
+                        >
                           {n.title}
                         </p>
-                      </Link>
-                    ) : (
-                      <p className={cn("text-sm", isUnread ? "font-semibold text-slate-900" : "font-medium text-slate-800")}>
-                        {n.title}
-                      </p>
+                      )}
+
+                      {isUnread && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-brand/15 px-2 py-0.5 text-[10px] font-bold text-brand uppercase tracking-wider">
+                          <span className="h-1.5 w-1.5 rounded-full bg-brand shrink-0 animate-pulse" />
+                          Unread
+                        </span>
+                      )}
+                    </div>
+
+                    <p className={cn("text-sm mt-0.5", isUnread ? "text-slate-800 font-medium" : "text-slate-500")}>
+                      {n.message}
+                    </p>
+
+                    {destination && (
+                      <div className="mt-2.5">
+                        <Link
+                          href={destination.href}
+                          onClick={() => markNotificationAsRead(n)}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition shadow-2xs",
+                            isUnread
+                              ? "bg-brand text-white hover:bg-brand-hover shadow-xs"
+                              : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                          )}
+                        >
+                          <span>{destination.label}</span>
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </Link>
+                      </div>
                     )}
-                    <p className={cn("text-sm", isUnread ? "text-slate-700" : "text-slate-500")}>{n.message}</p>
-                    <p className={cn("mt-1 text-xs", isUnread ? "text-slate-500 font-medium" : "text-slate-400")}>
+
+                    <p className={cn("mt-1.5 text-xs", isUnread ? "text-slate-500 font-medium" : "text-slate-400")}>
                       {formatDateTime(n.createdAt)}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <button
                       onClick={() => toggleRead(n)}
-                      className="rounded-lg px-2.5 py-1.5 text-xs font-semibold text-brand hover:bg-brand/10 cursor-pointer"
+                      className={cn(
+                        "rounded-lg px-2.5 py-1.5 text-xs font-semibold transition cursor-pointer",
+                        isUnread
+                          ? "bg-brand/10 text-brand hover:bg-brand/20 font-bold"
+                          : "text-slate-500 hover:bg-slate-100"
+                      )}
                     >
                       {n.isRead ? "Mark unread" : "Mark read"}
                     </button>

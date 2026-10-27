@@ -805,7 +805,7 @@ export default function ProfitExpensesPage() {
       {/* Row 1: Best Selling Products (Donut) & Expenses (Pie) */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 items-stretch">
         {/* Card 1: Best Selling Products */}
-        <Card className="p-5 flex flex-col h-full">
+        <Card className="p-5 flex flex-col h-full overflow-hidden">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <h2 className="text-sm sm:text-base font-semibold text-slate-900">
               Best Selling Products
@@ -824,10 +824,10 @@ export default function ProfitExpensesPage() {
             />
           </div>
 
-          <div className="flex-1 my-4 flex flex-col sm:flex-row items-center justify-between gap-6">
+          <div className="flex-1 my-4 flex flex-col sm:flex-row items-center justify-between gap-6 min-w-0">
             {/* Donut Chart with center label */}
             <div
-              className="relative flex h-[190px] w-[190px] min-h-[190px] min-w-[190px] items-center justify-center shrink-0"
+              className="relative flex h-[180px] w-[180px] min-h-[180px] min-w-[180px] items-center justify-center shrink-0"
               onMouseEnter={() => setBestSellingHovered(true)}
               onMouseLeave={() => setBestSellingHovered(false)}
             >
@@ -860,8 +860,8 @@ export default function ProfitExpensesPage() {
                     nameKey="name"
                     cx="50%"
                     cy="50%"
-                    innerRadius={58}
-                    outerRadius={88}
+                    innerRadius={55}
+                    outerRadius={84}
                     paddingAngle={bestSelling.length > 0 ? 3 : 0}
                     stroke="transparent"
                   >
@@ -877,7 +877,7 @@ export default function ProfitExpensesPage() {
             </div>
 
             {/* Right Legend with percentage */}
-            <div className="flex-1 w-full space-y-2.5">
+            <div className="flex-1 w-full min-w-0 space-y-2.5">
               {bestSelling.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center text-slate-400">
                   <p className="text-xs">No product sales in this period</p>
@@ -886,20 +886,20 @@ export default function ProfitExpensesPage() {
                 bestSelling.map((item) => (
                   <div
                     key={item.name}
-                    className="flex items-center justify-between text-xs font-medium"
+                    className="flex items-center justify-between gap-2.5 text-xs font-medium min-w-0"
                   >
-                    <div className="flex items-center gap-2 truncate pr-2">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       <span
                         className="h-2.5 w-2.5 rounded-sm shrink-0"
                         style={{ backgroundColor: item.color }}
                       />
-                      <span className="text-slate-700 truncate" title={item.name}>
+                      <span className="text-slate-700 truncate block font-medium" title={item.name}>
                         {item.name}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2.5 shrink-0">
-                      <span className="text-slate-400 font-normal">{item.percentage}%</span>
-                      <span className="text-slate-800 font-semibold">
+                    <div className="flex items-center gap-2 shrink-0 text-right">
+                      <span className="text-slate-400 font-normal whitespace-nowrap text-[11px] sm:text-xs">{item.percentage}%</span>
+                      <span className="text-slate-800 font-semibold whitespace-nowrap text-[11px] sm:text-xs">
                         {item.unitsSold} {item.unitsSold === 1 ? "unit" : "units"}
                       </span>
                     </div>
@@ -919,7 +919,7 @@ export default function ProfitExpensesPage() {
         </Card>
 
         {/* Card 2: Expenses (Pie) */}
-        <Card className="p-5 flex flex-col h-full">
+        <Card className="p-5 flex flex-col h-full overflow-hidden">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <h2 className="text-sm sm:text-base font-semibold text-slate-900">Expenses</h2>
             <TimeframeDropdown
@@ -936,7 +936,7 @@ export default function ProfitExpensesPage() {
             />
           </div>
 
-          <div className="flex-1 my-4 flex flex-col sm:flex-row items-center justify-between gap-6">
+          <div className="flex-1 my-4 flex flex-col sm:flex-row items-center justify-between gap-6 min-w-0">
             {/* Pie Chart */}
             <div className="relative flex h-[190px] w-[190px] min-h-[190px] min-w-[190px] items-center justify-center shrink-0">
               <ResponsiveContainer width="100%" height="100%">
@@ -971,7 +971,7 @@ export default function ProfitExpensesPage() {
             </div>
 
             {/* Right Legend with percentage and amount */}
-            <div className="flex-1 w-full space-y-2.5">
+            <div className="flex-1 w-full min-w-0 space-y-2.5">
               {expenseCategories.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center text-slate-400">
                   <p className="text-xs">No expenses in this period</p>
@@ -980,20 +980,20 @@ export default function ProfitExpensesPage() {
                 expenseCategories.map((item) => (
                   <div
                     key={item.category}
-                    className="flex items-center justify-between text-xs font-medium"
+                    className="flex items-center justify-between gap-2.5 text-xs font-medium min-w-0"
                   >
-                    <div className="flex items-center gap-2 truncate pr-2">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       <span
                         className="h-2.5 w-2.5 rounded-full shrink-0"
                         style={{ backgroundColor: item.color }}
                       />
-                      <span className="text-slate-700 truncate" title={item.category}>
+                      <span className="text-slate-700 truncate block font-medium" title={item.category}>
                         {item.category}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2.5 shrink-0">
-                      <span className="text-slate-400 font-normal">{item.percentage}%</span>
-                      <span className="text-slate-800 font-semibold">
+                    <div className="flex items-center gap-2.5 shrink-0 text-right">
+                      <span className="text-slate-400 font-normal whitespace-nowrap text-[11px] sm:text-xs">{item.percentage}%</span>
+                      <span className="text-slate-800 font-semibold whitespace-nowrap text-[11px] sm:text-xs">
                         {formatCurrency(item.amount)}
                       </span>
                     </div>

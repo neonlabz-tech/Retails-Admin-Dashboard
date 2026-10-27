@@ -68,3 +68,27 @@ export const sessionCookieOptions = {
   path: "/",
   maxAge: SESSION_MAX_AGE_SECONDS,
 };
+
+export interface ResetPasswordPayload {
+  adminId: string;
+  email: string;
+  purpose: "password_reset";
+}
+
+export async function signResetToken(payload: { adminId: string; email: string }): Promise<string> {
+  return new SignJWT({ ...payload, purpose: "password_reset" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("1h")
+    .sign(getSecretKey());
+}
+
+export async function verifyResetToken(token: string): Promise<ResetPasswordPayload | null> {
+  try {
+    const { payload } = await jwtVerify(token, getSecretKey());
+    if (payload.purpose !== "password_reset") return null;
+    return payload as unknown as ResetPasswordPayload;
+  } catch {
+    return null;
+  }
+}

@@ -6,7 +6,8 @@ export default defineConfig([
   ...nextCoreWebVitals,
   {
     rules: {
-      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/purity": "warn",
     },
   },
   globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts"]),

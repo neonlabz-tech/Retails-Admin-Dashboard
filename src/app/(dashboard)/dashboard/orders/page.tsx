@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Eye,
   ShoppingCart,
@@ -23,12 +24,12 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
-import { Button, Badge, Card } from "@/components/ui/primitives";
+import { Button, Badge, Card, LoadingState } from "@/components/ui/primitives";
 import { DataTable, type Column, Pagination, SearchInput } from "@/components/ui/table";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { cn, formatCurrency, formatDateTime, formatOrderId } from "@/lib/utils";
-import { ORDER_STATUSES, PAYMENT_STATUSES } from "@/lib/constants";
+import { ORDER_STATUS_OPTIONS, PAYMENT_STATUSES } from "@/lib/constants";
 import { printInvoice } from "@/lib/invoice";
 
 interface OrderRow {
@@ -128,11 +129,14 @@ const paymentBadgeStyles: Record<string, { bg: string; text: string; border: str
   refunded: { bg: "bg-slate-100", text: "text-slate-700", border: "border-slate-200" },
 };
 
-export default function OrdersPage() {
+function OrdersContent() {
   const toast = useToast();
+  const searchParams = useSearchParams();
+  const querySearch = searchParams.get("search") || "";
+
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(querySearch);
   const [status, setStatus] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -141,12 +145,25 @@ export default function OrdersPage() {
   const [dateTab, setDateTab] = useState<"range" | "single">("range");
   const [dateMenuOpen, setDateMenuOpen] = useState(false);
   const dateMenuRef = useRef<HTMLDivElement>(null);
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const statusMenuRef = useRef<HTMLDivElement>(null);
+  const [paymentMenuOpen, setPaymentMenuOpen] = useState(false);
+  const paymentMenuRef = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ total: 0, totalPages: 1, limit: 10 });
+
+  const todayStr = useMemo(() => toDateInputValue(new Date()), []);
+  const yesterdayStr = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return toDateInputValue(d);
+  }, []);
 
   const [detail, setDetail] = useState<OrderRow | null>(null);
   const [newStatus, setNewStatus] = useState("");
   const [newPaymentStatus, setNewPaymentStatus] = useState("");
+  const [shippingFeeInput, setShippingFeeInput] = useState("");
+  const [shippingFeeError, setShippingFeeError] = useState("");
   const [note, setNote] = useState("");
   const [updating, setUpdating] = useState(false);
 
@@ -154,6 +171,12 @@ export default function OrdersPage() {
     function onClickOutside(e: MouseEvent) {
       if (dateMenuRef.current && !dateMenuRef.current.contains(e.target as Node)) {
         setDateMenuOpen(false);
+      }
+      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target as Node)) {
+        setStatusMenuOpen(false);
+      }
+      if (paymentMenuRef.current && !paymentMenuRef.current.contains(e.target as Node)) {
+        setPaymentMenuOpen(false);
       }
     }
     document.addEventListener("mousedown", onClickOutside);
@@ -167,24 +190,21 @@ export default function OrdersPage() {
     return `${year}-${month}-${day}`;
   }
 
-  const todayStr = useMemo(() => toDateInputValue(new Date()), []);
-  const yesterdayStr = useMemo(() => {
-    const y = new Date();
-    y.setDate(y.getDate() - 1);
-    return toDateInputValue(y);
-  }, []);
-
   function applyPreset(preset: "today" | "yesterday" | "last7" | "thisMonth") {
     const now = new Date();
     setPage(1);
     if (preset === "today") {
+      const todayStr = toDateInputValue(now);
       setDateFrom(todayStr);
       setDateTo(todayStr);
       setSingleDate(todayStr);
     } else if (preset === "yesterday") {
-      setDateFrom(yesterdayStr);
-      setDateTo(yesterdayStr);
-      setSingleDate(yesterdayStr);
+      const y = new Date();
+      y.setDate(y.getDate() - 1);
+      const yStr = toDateInputValue(y);
+      setDateFrom(yStr);
+      setDateTo(yStr);
+      setSingleDate(yStr);
     } else if (preset === "last7") {
       const past = new Date();
       past.setDate(past.getDate() - 6);
@@ -220,6 +240,10 @@ export default function OrdersPage() {
 
   function getDateLabel(): string {
     if (!dateFrom && !dateTo) return "All dates";
+    const todayStr = toDateInputValue(new Date());
+    const y = new Date();
+    y.setDate(y.getDate() - 1);
+    const yesterdayStr = toDateInputValue(y);
 
     if (dateFrom && dateTo && dateFrom === dateTo) {
       if (dateFrom === todayStr) return "Today";
@@ -296,40 +320,81 @@ export default function OrdersPage() {
   }, [load]);
 
   function openDetail(order: OrderRow) {
-    const defaultStatus =
-      order.paymentStatus === "pending" && (!order.status || order.status === "pending")
-        ? "processing"
-        : order.status;
+    const defaultStatus = (ORDER_STATUS_OPTIONS as readonly string[]).includes(order.status)
+      ? order.status
+      : "processing";
     setDetail({
       ...order,
       orderNumber: formatOrderId(order.orderNumber, order.createdAt),
-      status: defaultStatus,
     });
     setNewStatus(defaultStatus);
     setNewPaymentStatus(order.paymentStatus);
+    setShippingFeeInput(
+      order.shippingFee !== undefined && order.shippingFee !== null
+        ? String(order.shippingFee)
+        : ""
+    );
+    setShippingFeeError("");
     setNote("");
   }
 
   async function handleUpdateStatus() {
     if (!detail) return;
+
+    if (newStatus === "shipped") {
+      const trimmed = shippingFeeInput.trim();
+      if (!trimmed) {
+        setShippingFeeError("Shipping fee is required when marking as shipped");
+        toast.error("Please enter a shipping fee before marking as shipped");
+        return;
+      }
+      const parsedFee = parseFloat(trimmed);
+      if (isNaN(parsedFee) || parsedFee < 0) {
+        setShippingFeeError("Please enter a valid shipping fee (0 or greater)");
+        toast.error("Shipping fee must be a valid number (0 or greater)");
+        return;
+      }
+    }
+
     setUpdating(true);
     try {
+      const payload: {
+        status: string;
+        paymentStatus: string;
+        note?: string;
+        shippingFee?: number;
+      } = {
+        status: newStatus,
+        paymentStatus: newPaymentStatus,
+        note,
+      };
+
+      if (newStatus === "shipped" || shippingFeeInput.trim() !== "") {
+        const parsedFee = parseFloat(shippingFeeInput);
+        if (!isNaN(parsedFee) && parsedFee >= 0) {
+          payload.shippingFee = parsedFee;
+        }
+      }
+
       const res = await fetch(`/api/orders/${detail._id}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus, paymentStatus: newPaymentStatus, note }),
+        body: JSON.stringify(payload),
       });
       const json = await res.json();
       if (!res.ok || !json.success) {
         toast.error(json.message || "Failed to update status");
         return;
       }
+      setShippingFeeError("");
       toast.success("Order updated successfully");
-      window.dispatchEvent(new Event("notifications-updated"));
       setDetail({
         ...json.data,
         orderNumber: formatOrderId(json.data.orderNumber, json.data.createdAt),
       });
+      if (json.data?.shippingFee !== undefined && json.data?.shippingFee !== null) {
+        setShippingFeeInput(String(json.data.shippingFee));
+      }
       load();
     } finally {
       setUpdating(false);
@@ -401,17 +466,19 @@ export default function OrdersPage() {
               <button
                 type="button"
                 onClick={() => {
+                  setStatusMenuOpen(false);
+                  setPaymentMenuOpen(false);
                   setDateMenuOpen((v) => !v);
                 }}
                 className={cn(
-                  "relative flex items-center gap-2 rounded-xl border bg-white py-2 pl-3.5 pr-8 text-xs font-medium outline-none shadow-xs transition cursor-pointer select-none hover:border-slate-300",
+                  "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm outline-none transition cursor-pointer select-none shadow-xs",
                   dateFrom || dateTo
-                    ? "border-brand text-brand ring-1 ring-brand font-semibold"
-                    : "border-slate-200 text-slate-700"
+                    ? "border-brand bg-brand-light/40 text-brand font-medium"
+                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                 )}
                 title="Filter by date"
               >
-                <Calendar className={cn("h-3.5 w-3.5 shrink-0", dateFrom || dateTo ? "text-brand" : "text-slate-400")} />
+                <Calendar className={cn("h-4 w-4 shrink-0", dateFrom || dateTo ? "text-brand" : "text-slate-400")} />
                 <span>{getDateLabel()}</span>
                 {dateFrom || dateTo ? (
                   <span
@@ -419,7 +486,7 @@ export default function OrdersPage() {
                       e.stopPropagation();
                       clearDateFilter();
                     }}
-                    className="ml-0.5 rounded p-0.5 hover:bg-brand/10 text-brand transition cursor-pointer"
+                    className="ml-0.5 rounded p-0.5 hover:bg-brand/10 text-brand transition"
                     title="Clear date filter"
                   >
                     <X className="h-3.5 w-3.5" />
@@ -427,7 +494,7 @@ export default function OrdersPage() {
                 ) : null}
                 <ChevronDown
                   className={cn(
-                    "pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 transition-transform duration-200",
+                    "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
                     dateFrom || dateTo ? "text-brand" : "text-slate-400",
                     dateMenuOpen && "rotate-180"
                   )}
@@ -595,61 +662,182 @@ export default function OrdersPage() {
             </div>
 
             {/* Status Filter */}
-            <div className="relative">
-              <select
-                value={status}
-                onChange={(e) => {
-                  setStatus(e.target.value);
-                  setPage(1);
-                }}
-                className="appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-3.5 pr-8 text-xs font-medium text-slate-700 outline-none focus:border-brand focus:ring-1 focus:ring-brand shadow-xs transition cursor-pointer hover:border-slate-300"
-              >
-                <option value="">All statuses</option>
-                {ORDER_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s.charAt(0).toUpperCase() + s.slice(1)}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-            </div>
-
-            {/* Payment Filter */}
-            <div className="relative">
-              <select
-                value={paymentStatus}
-                onChange={(e) => {
-                  setPaymentStatus(e.target.value);
-                  setPage(1);
-                }}
-                className="appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-3.5 pr-8 text-xs font-medium text-slate-700 outline-none focus:border-brand focus:ring-1 focus:ring-brand shadow-xs transition cursor-pointer hover:border-slate-300"
-              >
-                <option value="">All payments</option>
-                {PAYMENT_STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s.charAt(0).toUpperCase() + s.slice(1)}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-            </div>
-
-            {/* Reset Filter Button */}
-            {(status || paymentStatus || dateFrom || dateTo) && (
+            <div className="relative" ref={statusMenuRef}>
               <button
                 type="button"
                 onClick={() => {
-                  setStatus("");
-                  setPaymentStatus("");
-                  clearDateFilter();
+                  setDateMenuOpen(false);
+                  setPaymentMenuOpen(false);
+                  setStatusMenuOpen((v) => !v);
                 }}
-                className="flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 cursor-pointer transition shadow-xs"
-                title="Reset all filters"
+                className={cn(
+                  "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm outline-none transition cursor-pointer select-none shadow-xs",
+                  status
+                    ? "border-brand bg-brand-light/40 text-brand font-medium"
+                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                )}
+                title="Filter by status"
               >
-                <X className="h-3.5 w-3.5 text-slate-400" />
-                <span>Reset</span>
+                <span className="capitalize">{status ? status : "All statuses"}</span>
+                {status ? (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setStatus("");
+                      setPage(1);
+                    }}
+                    className="ml-0.5 rounded p-0.5 hover:bg-brand/10 text-brand transition cursor-pointer"
+                    title="Clear status filter"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </span>
+                ) : null}
+                <ChevronDown
+                  className={cn(
+                    "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
+                    status ? "text-brand" : "text-slate-400",
+                    statusMenuOpen && "rotate-180"
+                  )}
+                />
               </button>
-            )}
+
+              {statusMenuOpen && (
+                <div className="absolute right-0 top-full z-30 mt-1.5 w-44 rounded-xl border border-slate-200/90 bg-white p-1.5 shadow-xl shadow-slate-900/10 animate-modal-in">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStatus("");
+                      setPage(1);
+                      setStatusMenuOpen(false);
+                    }}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium text-left transition cursor-pointer",
+                      !status
+                        ? "bg-brand/10 text-brand font-semibold"
+                        : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                    )}
+                  >
+                    <span>All statuses</span>
+                    {!status && <Check className="h-3.5 w-3.5 text-brand" />}
+                  </button>
+                  <div className="my-1 border-t border-slate-100" />
+                  <div className="max-h-56 overflow-y-auto space-y-0.5">
+                    {ORDER_STATUS_OPTIONS.map((s) => {
+                      const isCurrent = status === s;
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => {
+                            setStatus(s);
+                            setPage(1);
+                            setStatusMenuOpen(false);
+                          }}
+                          className={cn(
+                            "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium text-left capitalize transition cursor-pointer",
+                            isCurrent
+                              ? "bg-brand/10 text-brand font-semibold"
+                              : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                          )}
+                        >
+                          <span>{s}</span>
+                          {isCurrent && <Check className="h-3.5 w-3.5 text-brand" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Payment Filter */}
+            <div className="relative" ref={paymentMenuRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  setDateMenuOpen(false);
+                  setStatusMenuOpen(false);
+                  setPaymentMenuOpen((v) => !v);
+                }}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm outline-none transition cursor-pointer select-none shadow-xs",
+                  paymentStatus
+                    ? "border-brand bg-brand-light/40 text-brand font-medium"
+                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                )}
+                title="Filter by payment status"
+              >
+                <span className="capitalize">{paymentStatus ? paymentStatus : "All payments"}</span>
+                {paymentStatus ? (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPaymentStatus("");
+                      setPage(1);
+                    }}
+                    className="ml-0.5 rounded p-0.5 hover:bg-brand/10 text-brand transition cursor-pointer"
+                    title="Clear payment filter"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </span>
+                ) : null}
+                <ChevronDown
+                  className={cn(
+                    "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
+                    paymentStatus ? "text-brand" : "text-slate-400",
+                    paymentMenuOpen && "rotate-180"
+                  )}
+                />
+              </button>
+
+              {paymentMenuOpen && (
+                <div className="absolute right-0 top-full z-30 mt-1.5 w-44 rounded-xl border border-slate-200/90 bg-white p-1.5 shadow-xl shadow-slate-900/10 animate-modal-in">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentStatus("");
+                      setPage(1);
+                      setPaymentMenuOpen(false);
+                    }}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium text-left transition cursor-pointer",
+                      !paymentStatus
+                        ? "bg-brand/10 text-brand font-semibold"
+                        : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                    )}
+                  >
+                    <span>All payments</span>
+                    {!paymentStatus && <Check className="h-3.5 w-3.5 text-brand" />}
+                  </button>
+                  <div className="my-1 border-t border-slate-100" />
+                  <div className="max-h-56 overflow-y-auto space-y-0.5">
+                    {PAYMENT_STATUSES.map((s) => {
+                      const isCurrent = paymentStatus === s;
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => {
+                            setPaymentStatus(s);
+                            setPage(1);
+                            setPaymentMenuOpen(false);
+                          }}
+                          className={cn(
+                            "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium text-left capitalize transition cursor-pointer",
+                            isCurrent
+                              ? "bg-brand/10 text-brand font-semibold"
+                              : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                          )}
+                        >
+                          <span>{s}</span>
+                          {isCurrent && <Check className="h-3.5 w-3.5 text-brand" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </Card>
@@ -663,390 +851,406 @@ export default function OrdersPage() {
         open={!!detail}
         onClose={() => setDetail(null)}
         size="xl"
-        hideHeader
-        bodyClassName="p-0"
-        className="max-h-[92vh] flex flex-col overflow-hidden"
+        title={
+          detail ? (
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                  Order — {formatOrderId(detail.orderNumber, detail.createdAt)}
+                </span>
+                {(() => {
+                  const cfg = statusBadgeStyles[detail.status.toLowerCase()] || statusBadgeStyles.pending;
+                  return (
+                    <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border", cfg.bg, cfg.text, cfg.border)}>
+                      <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", cfg.dot)} />
+                      <span className="capitalize">{detail.status}</span>
+                    </span>
+                  );
+                })()}
+                {(() => {
+                  const pcfg = paymentBadgeStyles[detail.paymentStatus.toLowerCase()] || paymentBadgeStyles.pending;
+                  return (
+                    <span className={cn("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize", pcfg.bg, pcfg.text, pcfg.border)}>
+                      Payment: {detail.paymentStatus}
+                    </span>
+                  );
+                })()}
+                {detail.paymentMethod && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200/80 uppercase">
+                    {detail.paymentMethod === "cod" ? "COD" : detail.paymentMethod.replace("_", " ")}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 font-normal flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                <span>Placed on {formatPlacedDate(detail.createdAt)}</span>
+              </p>
+            </div>
+          ) : ""
+        }
+        footer={
+          detail && (
+            <div className="flex items-center justify-between w-full">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => printInvoice(detail)}
+              >
+                <Printer className="h-3.5 w-3.5" />
+                <span>Print Invoice</span>
+              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setDetail(null)}
+                >
+                  Close
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleUpdateStatus}
+                  loading={updating}
+                >
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          )
+        }
       >
         {detail && (
-          <div className="flex flex-col h-full max-h-[92vh]">
-            {/* Modal Top Header Bar */}
-            <div className="border-b border-slate-200/80 bg-slate-50/70 px-5 py-4 sm:px-6 flex items-start justify-between gap-4 shrink-0">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-                    Order {formatOrderId(detail.orderNumber, detail.createdAt)}
-                  </h2>
-                  {(() => {
-                    const cfg = statusBadgeStyles[detail.status.toLowerCase()] || statusBadgeStyles.pending;
-                    return (
-                      <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border", cfg.bg, cfg.text, cfg.border)}>
-                        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", cfg.dot)} />
-                        <span className="capitalize">{detail.status}</span>
-                      </span>
-                    );
-                  })()}
-                  {(() => {
-                    const pcfg = paymentBadgeStyles[detail.paymentStatus.toLowerCase()] || paymentBadgeStyles.pending;
-                    return (
-                      <span className={cn("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize", pcfg.bg, pcfg.text, pcfg.border)}>
-                        Payment: {detail.paymentStatus}
-                      </span>
-                    );
-                  })()}
-                  {detail.paymentMethod && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200/80 uppercase">
-                      {detail.paymentMethod === "cod" ? "COD" : detail.paymentMethod.replace("_", " ")}
-                    </span>
-                  )}
+          <div className="flex flex-col gap-3.5">
+            {/* Top Row: Customer Info & Shipping Address */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {/* Customer Card */}
+              <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-xs">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <div className="flex items-center gap-1.5">
+                    <User className="h-3.5 w-3.5 text-brand" />
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Customer</span>
+                  </div>
+                  <Link
+                    href={`/dashboard/customers?search=${encodeURIComponent(detail.customerSnapshot?.email || detail.customerSnapshot?.name || "")}${detail.customer ? `&customerId=${encodeURIComponent(typeof detail.customer === "string" ? detail.customer : detail.customer._id || "")}` : ""}`}
+                    className="text-xs font-semibold text-brand hover:text-brand-hover hover:underline transition cursor-pointer flex items-center gap-1"
+                    title="View customer profile and order history"
+                  >
+                    <span>History</span>
+                    <ExternalLink className="h-3 w-3" />
+                  </Link>
                 </div>
-                <p className="text-xs text-slate-500 mt-1 flex items-center gap-1.5">
-                  <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                  <span>Placed on {formatPlacedDate(detail.createdAt)}</span>
-                </p>
+
+                <div className="flex items-center gap-3 mt-2.5">
+                  <div className="h-9 w-9 rounded-xl bg-brand/10 text-brand font-bold text-xs flex items-center justify-center shrink-0 border border-brand/20 shadow-xs">
+                    {getCustomerInitials(detail.customerSnapshot?.name)}
+                  </div>
+                  <div className="min-w-0 flex-1 text-xs">
+                    <h4 className="text-sm font-bold text-slate-900 truncate">
+                      {detail.customerSnapshot?.name || "Guest Customer"}
+                    </h4>
+                    <div className="flex items-center gap-1.5 text-slate-600 mt-0.5 truncate">
+                      <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+                      <span className="truncate">{detail.customerSnapshot?.email || "No email provided"}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-slate-600 mt-0.5 truncate">
+                      <Phone className="h-3 w-3 text-slate-400 shrink-0" />
+                      <span>{detail.customerSnapshot?.phone || "No phone provided"}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setDetail(null)}
-                  className="rounded-xl border border-slate-200 bg-white p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer shadow-xs"
-                  aria-label="Close"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+              {/* Shipping Address Card */}
+              <div className="rounded-xl border border-slate-200/90 bg-white p-3.5 shadow-xs">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <div className="flex items-center gap-1.5">
+                    <Truck className="h-3.5 w-3.5 text-brand" />
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Shipping</span>
+                  </div>
+                  <span className="bg-slate-100 text-slate-600 text-[10px] px-2 py-0.5 rounded font-semibold border border-slate-200/80">
+                    Standard Delivery
+                  </span>
+                </div>
+
+                <div className="flex items-start gap-3 mt-2.5">
+                  <div className="h-9 w-9 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center shrink-0 border border-slate-200/70">
+                    <MapPin className="h-3.5 w-3.5 text-slate-500" />
+                  </div>
+                  <div className="min-w-0 flex-1 text-xs text-slate-600 space-y-0.5">
+                    <h4 className="text-sm font-bold text-slate-900 truncate">
+                      {detail.shippingAddress?.fullName || detail.customerSnapshot?.name || "Recipient"}
+                    </h4>
+                    <p className="text-slate-700 truncate leading-snug">
+                      {detail.shippingAddress?.line1 || "No street address"}
+                      {detail.shippingAddress?.line2 ? `, ${detail.shippingAddress.line2}` : ""}
+                    </p>
+                    <p className="text-slate-500 truncate">
+                      {[detail.shippingAddress?.city, detail.shippingAddress?.state, detail.shippingAddress?.postalCode]
+                        .filter(Boolean)
+                        .join(", ") || "City, State"}
+                      {detail.shippingAddress?.country ? ` • ${detail.shippingAddress.country}` : " • Sri Lanka"}
+                    </p>
+                    {detail.shippingAddress?.phone && (
+                      <p className="text-slate-600 flex items-center gap-1 font-medium pt-0.5">
+                        <Phone className="h-3 w-3 text-slate-400" />
+                        {detail.shippingAddress.phone}
+                      </p>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Scrollable Modal Content */}
-            <div className="overflow-y-auto p-5 sm:p-6 space-y-5 flex-1">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                
-                {/* LEFT COLUMN: Items, Summary & History (7 Cols) */}
-                <div className="lg:col-span-7 space-y-5">
-                  
-                  {/* Products Card */}
-                  <div className="rounded-2xl border border-slate-200/90 bg-white shadow-xs overflow-hidden">
-                    <div className="bg-slate-50/80 border-b border-slate-100 px-4 py-3 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Package className="h-4 w-4 text-brand" />
-                        <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
-                          Ordered Items ({detail.items.length})
-                        </span>
-                      </div>
-                      <span className="text-xs text-slate-400 font-medium">
-                        {detail.items.reduce((sum, item) => sum + item.quantity, 0)} total unit(s)
+            {/* Bottom Row: Ordered Items & Audit Trail (Left) + Update Order (Right) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5">
+              {/* LEFT: Products, Payment Breakdown & Status Audit Trail */}
+              <div className="lg:col-span-7 flex flex-col gap-3.5">
+                <div className="rounded-xl border border-slate-200/90 bg-white shadow-xs overflow-hidden flex flex-col">
+                  {/* Products Header */}
+                  <div className="bg-slate-50/80 border-b border-slate-100 px-3.5 py-2.5 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Package className="h-3.5 w-3.5 text-brand" />
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                        Ordered Items ({detail.items.length})
                       </span>
                     </div>
+                    <span className="text-xs text-slate-400 font-medium">
+                      {detail.items.reduce((sum, item) => sum + item.quantity, 0)} total unit(s)
+                    </span>
+                  </div>
 
-                    <div className="divide-y divide-slate-100">
-                      {detail.items.map((item, idx) => {
-                        const lineSubtotal = item.subtotal || item.price * item.quantity;
-                        return (
-                          <div key={idx} className="p-3.5 sm:p-4 flex items-center gap-3 hover:bg-slate-50/50 transition">
-                            <div className="h-12 w-12 rounded-xl bg-slate-100 border border-slate-200/80 flex items-center justify-center shrink-0 overflow-hidden">
-                              {item.image ? (
-                                <Image
-                                  src={item.image}
-                                  alt={item.name}
-                                  width={48}
-                                  height={48}
-                                  unoptimized
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : (
-                                <Package className="h-5 w-5 text-slate-400" />
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <h4 className="text-xs sm:text-sm font-semibold text-slate-900 truncate">
-                                {item.name}
-                              </h4>
-                              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                                <span className="font-mono text-[11px] text-slate-500">
-                                  SKU: {item.sku || "N/A"}
-                                </span>
-                                <span className="text-slate-300">•</span>
-                                <span className="text-xs text-slate-500">
-                                  {formatCurrency(item.price)} × {item.quantity}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="text-right shrink-0">
-                              <span className="text-xs sm:text-sm font-bold text-slate-900">
-                                {formatCurrency(lineSubtotal)}
+                  {/* Items List */}
+                  <div className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
+                    {detail.items.map((item, idx) => {
+                      const lineSubtotal = item.subtotal || item.price * item.quantity;
+                      return (
+                        <div key={idx} className="p-3 flex items-center gap-3 hover:bg-slate-50/50 transition">
+                          <div className="h-10 w-10 rounded-lg bg-slate-100 border border-slate-200/80 flex items-center justify-center shrink-0 overflow-hidden">
+                            {item.image ? (
+                              <Image
+                                src={item.image}
+                                alt={item.name}
+                                width={40}
+                                height={40}
+                                unoptimized
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <Package className="h-4 w-4 text-slate-400" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <h4 className="text-xs sm:text-sm font-semibold text-slate-900 truncate">
+                              {item.name}
+                            </h4>
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              <span className="font-mono text-[11px] text-slate-500">
+                                SKU: {item.sku || "N/A"}
+                              </span>
+                              <span className="text-slate-300">•</span>
+                              <span className="text-xs text-slate-500">
+                                {formatCurrency(item.price)} × {item.quantity}
                               </span>
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
+                          <div className="text-right shrink-0">
+                            <span className="text-xs sm:text-sm font-bold text-slate-900">
+                              {formatCurrency(lineSubtotal)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
 
-                  {/* Financial Breakdown Card */}
-                  <div className="rounded-2xl border border-slate-200/90 bg-white shadow-xs p-4 sm:p-5">
-                    <div className="flex items-center gap-2 mb-3 pb-2 border-b border-slate-100">
-                      <Receipt className="h-4 w-4 text-brand" />
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Payment Breakdown</span>
+                  {/* Financial Breakdown (Attached to bottom of items card) */}
+                  <div className="bg-slate-50/70 border-t border-slate-200/80 p-3.5 space-y-1.5 text-xs">
+                    <div className="flex justify-between text-slate-600">
+                      <span>Items Subtotal</span>
+                      <span className="font-semibold text-slate-800">{formatCurrency(detail.subtotal)}</span>
                     </div>
-                    <div className="space-y-2 text-xs sm:text-sm">
-                      <div className="flex justify-between text-slate-600">
-                        <span>Items Subtotal</span>
-                        <span className="font-semibold text-slate-800">{formatCurrency(detail.subtotal)}</span>
-                      </div>
+                    {detail.discount > 0 && (
                       <div className="flex justify-between text-slate-600">
                         <span>Discount</span>
                         <span className="font-semibold text-emerald-600">
-                          {detail.discount > 0 ? `-${formatCurrency(detail.discount)}` : "LKR 0"}
+                          -{formatCurrency(detail.discount)}
                         </span>
                       </div>
-                      <div className="flex justify-between text-slate-600">
-                        <span>Shipping Fee</span>
-                        <span className="font-semibold text-slate-800">{formatCurrency(detail.shippingFee ?? 0)}</span>
-                      </div>
-                      <div className="flex justify-between text-slate-600">
-                        <span>Estimated Tax</span>
-                        <span className="text-slate-500">{formatCurrency(detail.tax || 0)}</span>
-                      </div>
-                      <div className="border-t border-slate-200 pt-3 mt-2 flex items-baseline justify-between">
-                        <div>
-                          <span className="text-sm font-bold text-slate-900 block">Total Amount</span>
-                          <span className="text-[11px] text-slate-400">All taxes &amp; fees included</span>
-                        </div>
-                        <span className="text-xl sm:text-2xl font-black text-brand tracking-tight">
-                          {formatCurrency(detail.total)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Status History Collapsible / Timeline */}
-                  {detail.statusHistory && detail.statusHistory.length > 0 && (
-                    <details className="group rounded-2xl border border-slate-200/90 bg-white p-4 shadow-xs" open>
-                      <summary className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-600 cursor-pointer select-none">
-                        <div className="flex items-center gap-2">
-                          <RotateCcw className="h-3.5 w-3.5 text-brand" />
-                          <span>Status Audit Trail ({detail.statusHistory.length})</span>
-                        </div>
-                        <ChevronDown className="h-4 w-4 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
-                      </summary>
-                      <div className="mt-3.5 pt-3 border-t border-slate-100 flex flex-col gap-2.5">
-                        {detail.statusHistory
-                          .slice()
-                          .reverse()
-                          .map((h, idx) => (
-                            <div key={idx} className="flex items-start justify-between gap-3 text-xs">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <span className="h-2 w-2 rounded-full bg-brand shrink-0" />
-                                <span className="font-semibold text-slate-800 capitalize">{h.status}</span>
-                                {h.note && <span className="text-slate-500 truncate">— {h.note}</span>}
-                              </div>
-                              <span className="text-slate-400 font-medium shrink-0">
-                                {formatDateTime(h.changedAt)}
-                              </span>
-                            </div>
-                          ))}
-                      </div>
-                    </details>
-                  )}
-                </div>
-
-                {/* RIGHT COLUMN: Customer, Shipping & Management (5 Cols) */}
-                <div className="lg:col-span-5 space-y-5">
-                  
-                  {/* Customer Card */}
-                  <div className="rounded-2xl border border-slate-200/90 bg-white shadow-xs p-4 sm:p-5">
-                    <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <User className="h-4 w-4 text-brand" />
-                        <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Customer</span>
-                      </div>
-                      <Link
-                        href={`/dashboard/customers?search=${encodeURIComponent(detail.customerSnapshot?.email || detail.customerSnapshot?.name || "")}${detail.customer ? `&customerId=${encodeURIComponent(typeof detail.customer === "string" ? detail.customer : detail.customer._id || "")}` : ""}`}
-                        className="text-xs font-semibold text-brand hover:text-brand-hover hover:underline transition cursor-pointer flex items-center gap-1"
-                        title="View customer profile and order history"
-                      >
-                        <span>History</span>
-                        <ExternalLink className="h-3 w-3" />
-                      </Link>
-                    </div>
-
-                    <div className="flex items-start gap-3 mt-3.5">
-                      <div className="h-10 w-10 rounded-xl bg-brand/10 text-brand font-bold text-xs flex items-center justify-center shrink-0 border border-brand/20 shadow-xs">
-                        {getCustomerInitials(detail.customerSnapshot?.name)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h4 className="text-sm font-bold text-slate-900 truncate">
-                          {detail.customerSnapshot?.name || "Guest Customer"}
-                        </h4>
-                        <div className="flex items-center gap-1.5 text-xs text-slate-600 mt-1 truncate">
-                          <Mail className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                          <span className="truncate">{detail.customerSnapshot?.email || "No email provided"}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-xs text-slate-600 mt-0.5 truncate">
-                          <Phone className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                          <span>{detail.customerSnapshot?.phone || "No phone provided"}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Shipping Address Card */}
-                  <div className="rounded-2xl border border-slate-200/90 bg-white shadow-xs p-4 sm:p-5">
-                    <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <Truck className="h-4 w-4 text-brand" />
-                        <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Shipping</span>
-                      </div>
-                      <span className="bg-slate-100 text-slate-600 text-[11px] px-2 py-0.5 rounded-md font-semibold border border-slate-200">
-                        Standard Delivery
+                    )}
+                    <div className="border-t border-slate-200/80 pt-2 flex items-baseline justify-between">
+                      <span className="text-xs font-bold text-slate-900">Total Amount</span>
+                      <span className="text-lg font-black text-brand tracking-tight">
+                        {formatCurrency(detail.total)}
                       </span>
                     </div>
+                  </div>
+                </div>
 
-                    <div className="flex items-start gap-3 mt-3.5">
-                      <div className="h-10 w-10 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center shrink-0 border border-slate-200/70">
-                        <MapPin className="h-4 w-4 text-slate-500" />
+                {/* Status History Collapsible (Moved to Left Column to fill white space) */}
+                {detail.statusHistory && detail.statusHistory.length > 0 && (
+                  <details className="group rounded-xl border border-slate-200/90 bg-white p-3 shadow-xs" open>
+                    <summary className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-600 cursor-pointer select-none">
+                      <div className="flex items-center gap-1.5">
+                        <RotateCcw className="h-3.5 w-3.5 text-brand" />
+                        <span>Status Audit Trail ({detail.statusHistory.length})</span>
                       </div>
-                      <div className="min-w-0 flex-1 text-xs text-slate-600 space-y-0.5">
-                        <h4 className="text-sm font-bold text-slate-900 truncate mb-1">
-                          {detail.shippingAddress?.fullName || detail.customerSnapshot?.name || "Recipient"}
-                        </h4>
-                        <p className="leading-relaxed text-slate-700">
-                          {detail.shippingAddress?.line1 || "No street address"}
-                          {detail.shippingAddress?.line2 ? `, ${detail.shippingAddress.line2}` : ""}
-                        </p>
-                        <p className="text-slate-500">
-                          {[detail.shippingAddress?.city, detail.shippingAddress?.state, detail.shippingAddress?.postalCode]
-                            .filter(Boolean)
-                            .join(", ") || "City, State"}
-                        </p>
-                        <p className="text-slate-500 font-medium">
-                          {detail.shippingAddress?.country || "Sri Lanka"}
-                        </p>
-                        {detail.shippingAddress?.phone && (
-                          <p className="text-slate-600 pt-1 flex items-center gap-1 font-medium">
-                            <Phone className="h-3 w-3 text-slate-400" />
-                            {detail.shippingAddress.phone}
+                      <ChevronDown className="h-3.5 w-3.5 text-slate-400 transition-transform duration-200 group-open:rotate-180" />
+                    </summary>
+                    <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-col gap-2 max-h-36 overflow-y-auto">
+                      {detail.statusHistory
+                        .slice()
+                        .reverse()
+                        .map((h, idx) => (
+                          <div key={idx} className="flex items-start justify-between gap-2 text-xs">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="h-1.5 w-1.5 rounded-full bg-brand shrink-0" />
+                              <span className="font-semibold text-slate-800 capitalize">{h.status}</span>
+                              {h.note && <span className="text-slate-500 truncate text-[11px]">— {h.note}</span>}
+                            </div>
+                            <span className="text-slate-400 text-[11px] font-medium shrink-0">
+                              {formatDateTime(h.changedAt)}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  </details>
+                )}
+              </div>
+
+              {/* RIGHT: Update Order */}
+              <div className="lg:col-span-5 flex flex-col gap-3.5">
+                {/* Update Order Card */}
+                <div className="rounded-xl border border-slate-200/90 bg-white shadow-xs p-3.5">
+                  <div className="flex items-center gap-1.5 pb-2 border-b border-slate-100">
+                    <CreditCard className="h-3.5 w-3.5 text-brand" />
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Update Order</span>
+                  </div>
+
+                  <div className="space-y-2.5 mt-2.5">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">Order Status</label>
+                      <div className="relative">
+                        <select
+                          value={newStatus}
+                          onChange={(e) => {
+                            const nextStatus = e.target.value;
+                            setNewStatus(nextStatus);
+                            if (nextStatus !== "shipped") {
+                              setShippingFeeError("");
+                            }
+                            if (nextStatus === "delivered" && newPaymentStatus === "pending") {
+                              setNewPaymentStatus("paid");
+                            }
+                          }}
+                          className="peer w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-800 shadow-xs focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand cursor-pointer pr-8"
+                        >
+                          {ORDER_STATUS_OPTIONS.map((s) => (
+                            <option key={s} value={s} className="capitalize">
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 peer-focus:rotate-180 transition-transform duration-200" />
+                      </div>
+                    </div>
+
+                    {newStatus === "shipped" && (
+                      <div className="space-y-1 pt-0.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                            Shipping Fee
+                            <span className="text-rose-500 font-bold">*</span>
+                          </label>
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            Sent in customer email
+                          </span>
+                        </div>
+
+                        <div className="relative">
+                          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 select-none">
+                            LKR
+                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={shippingFeeInput}
+                            onChange={(e) => {
+                              setShippingFeeInput(e.target.value);
+                              if (shippingFeeError) setShippingFeeError("");
+                            }}
+                            placeholder="0"
+                            className={cn(
+                              "w-full rounded-xl border bg-white pl-11 pr-3 py-1.5 text-xs sm:text-sm font-semibold text-slate-800 shadow-2xs transition placeholder:text-slate-400 focus:outline-none focus:ring-1",
+                              shippingFeeError
+                                ? "border-rose-400 focus:border-rose-500 focus:ring-rose-500/20 bg-rose-50/20"
+                                : "border-slate-200 focus:border-brand focus:ring-brand"
+                            )}
+                          />
+                        </div>
+
+                        {shippingFeeError && (
+                          <p className="text-[11px] font-medium text-rose-500">
+                            {shippingFeeError}
                           </p>
                         )}
+
+                        {detail && (
+                          <div className="rounded-lg border border-slate-200/70 bg-slate-50/80 px-2.5 py-1.5 flex items-center justify-between text-xs">
+                            <span className="text-slate-500 font-medium">Total with Shipping:</span>
+                            <span className="font-bold text-slate-900">
+                              {formatCurrency(
+                                Math.max(
+                                  0,
+                                  (detail.subtotal || 0) -
+                                    (detail.discount || 0) +
+                                    (parseFloat(shippingFeeInput) || 0)
+                                )
+                              )}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block mb-1">Payment Status</label>
+                      <div className="relative">
+                        <select
+                          value={newPaymentStatus}
+                          onChange={(e) => {
+                            const nextPaymentStatus = e.target.value;
+                            setNewPaymentStatus(nextPaymentStatus);
+                            if (nextPaymentStatus === "pending") {
+                              setNewStatus("processing");
+                            }
+                          }}
+                          className="peer w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs sm:text-sm font-medium text-slate-800 shadow-xs focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand cursor-pointer pr-8"
+                        >
+                          {PAYMENT_STATUSES.map((s) => (
+                            <option key={s} value={s} className="capitalize">
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 peer-focus:rotate-180 transition-transform duration-200" />
                       </div>
                     </div>
                   </div>
-
-                  {/* Order Fulfillment & Status Update Card */}
-                  <div className="rounded-2xl border border-slate-200/90 bg-white shadow-xs p-4 sm:p-5">
-                    <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-                      <CreditCard className="h-4 w-4 text-brand" />
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Update Order</span>
-                    </div>
-
-                    <div className="space-y-3 mt-3.5">
-                      <div>
-                        <label className="text-xs font-bold text-slate-700 block mb-1">Order Status</label>
-                        <div className="relative">
-                          <select
-                            value={newStatus}
-                            onChange={(e) => {
-                              const nextStatus = e.target.value;
-                              setNewStatus(nextStatus);
-                              if (nextStatus === "delivered" && newPaymentStatus === "pending") {
-                                setNewPaymentStatus("paid");
-                              }
-                            }}
-                            className="peer w-full appearance-none rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-800 shadow-xs focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand cursor-pointer pr-10"
-                          >
-                            {ORDER_STATUSES.map((s) => (
-                              <option key={s} value={s} className="capitalize">
-                                {s}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 peer-focus:rotate-180 transition-transform duration-200" />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-bold text-slate-700 block mb-1">Payment Status</label>
-                        <div className="relative">
-                          <select
-                            value={newPaymentStatus}
-                            onChange={(e) => {
-                              const nextPaymentStatus = e.target.value;
-                              setNewPaymentStatus(nextPaymentStatus);
-                              if (nextPaymentStatus === "pending") {
-                                setNewStatus("processing");
-                              }
-                            }}
-                            className="peer w-full appearance-none rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs sm:text-sm font-medium text-slate-800 shadow-xs focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand cursor-pointer pr-10"
-                          >
-                            {PAYMENT_STATUSES.map((s) => (
-                              <option key={s} value={s} className="capitalize">
-                                {s}
-                              </option>
-                            ))}
-                          </select>
-                          <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 peer-focus:rotate-180 transition-transform duration-200" />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-bold text-slate-700 block mb-1">Internal Note (Optional)</label>
-                        <input
-                          type="text"
-                          value={note}
-                          onChange={(e) => setNote(e.target.value)}
-                          placeholder="e.g. Courier tracking code or update reason"
-                          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs sm:text-sm placeholder:text-slate-400 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand shadow-xs"
-                        />
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={handleUpdateStatus}
-                        disabled={updating}
-                        className="w-full rounded-xl bg-brand hover:bg-brand-hover text-white py-2.5 px-4 text-xs sm:text-sm font-bold shadow-xs transition disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2 mt-2"
-                      >
-                        {updating ? "Saving Changes..." : "Save Status Changes"}
-                      </button>
-                    </div>
-                  </div>
-
                 </div>
               </div>
-            </div>
-
-            {/* Modal Bottom Action Bar */}
-            <div className="border-t border-slate-200/80 bg-slate-50/80 px-5 py-3.5 sm:px-6 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => printInvoice(detail)}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-xs flex items-center gap-2 cursor-pointer transition"
-                >
-                  <Printer className="h-3.5 w-3.5 text-slate-500" />
-                  <span>Print Invoice</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    toast.success("Email notification sent to " + (detail.customerSnapshot?.email || "customer"));
-                  }}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-xs flex items-center gap-2 cursor-pointer transition"
-                >
-                  <Mail className="h-3.5 w-3.5 text-slate-500" />
-                  <span>Resend Email</span>
-                </button>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDetail(null)}
-                className="rounded-xl bg-slate-200/80 hover:bg-slate-300 text-slate-700 font-semibold text-xs px-4 py-2 transition cursor-pointer"
-              >
-                Close Window
-              </button>
             </div>
           </div>
         )}
       </Modal>
     </div>
+  );
+}
+
+export default function OrdersPage() {
+  return (
+    <Suspense fallback={<LoadingState label="Loading orders..." />}>
+      <OrdersContent />
+    </Suspense>
   );
 }

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
-import { Notification } from "@/models/Notification";
+import { Notification, ADMIN_NOTIFICATION_CONDITIONS } from "@/models/Notification";
 import { apiSuccess, handleApiError } from "@/lib/api-utils";
 import { getPaginationParams, buildPaginationMeta } from "@/lib/utils";
 
@@ -9,48 +9,38 @@ export async function GET(request: NextRequest) {
     await connectDB();
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type") || "";
-    const unreadOnly =
-      searchParams.get("unreadOnly") === "true" || searchParams.get("unread") === "true";
+    const unreadOnly = searchParams.get("unreadOnly") === "true";
     const { page, limit, skip } = getPaginationParams(searchParams);
 
-    const filter: Record<string, unknown> = {};
-    if (type) filter.type = type;
-
-    // Match both isRead: false and legacy read: false / missing flags
+    // Unread if neither isRead nor legacy read flag is true
     const unreadCondition = {
-      $or: [
-        { isRead: false },
-        { isRead: { $exists: false }, read: { $ne: true } },
-        { isRead: null, read: { $ne: true } },
-        { read: false },
-      ],
+      isRead: { $ne: true },
+      read: { $ne: true },
     };
 
-    if (unreadOnly) {
-      filter.$and = [unreadCondition];
+    // Filter strictly for admin notifications (excludes customer-facing notifications)
+    const andConditions: Array<Record<string, unknown>> = [...ADMIN_NOTIFICATION_CONDITIONS];
+
+    if (type) {
+      andConditions.push({ type });
     }
 
-    const unreadCountFilter: Record<string, unknown> = { ...unreadCondition };
-    if (type) {
-      unreadCountFilter.type = type;
+    const unreadCountConditions = [...andConditions, unreadCondition];
+
+    if (unreadOnly) {
+      andConditions.push(unreadCondition);
     }
+
+    const filter: Record<string, unknown> = { $and: andConditions };
+    const unreadCountFilter: Record<string, unknown> = { $and: unreadCountConditions };
 
     const [notifications, total, unreadCount] = await Promise.all([
-      Notification.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Notification.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
       Notification.countDocuments(filter),
       Notification.countDocuments(unreadCountFilter),
     ]);
 
-    const normalized = (notifications as unknown as Array<Record<string, unknown>>).map((n) => ({
-      ...n,
-      isRead: Boolean(n.isRead === true || (n.isRead === undefined && n.read === true)),
-    }));
-
-    return apiSuccess({
-      notifications: normalized,
-      meta: buildPaginationMeta(total, page, limit),
-      unreadCount,
-    });
+    return apiSuccess({ notifications, meta: buildPaginationMeta(total, page, limit), unreadCount });
   } catch (err) {
     return handleApiError(err);
   }
@@ -68,8 +58,9 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (action === "mark-all-read" || action === "mark_all_read") {
+      // Only mark admin-facing notifications as read; customer notifications remain untouched
       const result = await Notification.updateMany(
-        {},
+        { $and: ADMIN_NOTIFICATION_CONDITIONS },
         { $set: { isRead: true, read: true } }
       );
       return apiSuccess({ modifiedCount: result.modifiedCount }, "All notifications marked as read");
