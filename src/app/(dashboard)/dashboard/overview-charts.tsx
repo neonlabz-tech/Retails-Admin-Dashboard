@@ -30,6 +30,7 @@ const STATUS_COLORS: Record<string, string> = {
 import { useState } from "react";
 import Link from "next/link";
 import { Calendar, Loader2, Package, AlertTriangle, CheckCircle2, ArrowRight } from "lucide-react";
+import { Tooltip as UITooltip } from "@/components/ui/tooltip";
 
 export function SalesTrendChart({
   data: propData,
@@ -106,7 +107,7 @@ export function SalesTrendChart({
           </h3>
           <div className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-slate-400">
             <span className="h-2 w-2 rounded-full bg-brand" />
-            <span>Daily Revenue</span>
+            <span>Daily Sales</span>
           </div>
         </div>
 
@@ -184,7 +185,7 @@ export function SalesTrendChart({
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <AreaChart data={data} margin={{ top: 10, right: 15, left: 10, bottom: 5 }}>
               <defs>
                 <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#093b84" stopOpacity={0.25} />
@@ -192,14 +193,58 @@ export function SalesTrendChart({
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="4 4" stroke="#f1f5f9" vertical={false} />
-              <XAxis dataKey="_id" tick={{ fontSize: 12, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
-              <YAxis tick={{ fontSize: 12, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
+              <XAxis
+                dataKey="_id"
+                tick={{ fontSize: 11, fill: "#94a3b8" }}
+                tickLine={false}
+                axisLine={false}
+                interval={data.length > 30 ? Math.ceil(data.length / 8) : data.length > 14 ? 1 : 0}
+                tickFormatter={(val) => {
+                  try {
+                    const parts = String(val).split("-");
+                    if (parts.length === 3) {
+                      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                      const m = months[parseInt(parts[1], 10) - 1] || parts[1];
+                      return `${m} ${parts[2]}`;
+                    }
+                    return val;
+                  } catch {
+                    return val;
+                  }
+                }}
+              />
+              <YAxis
+                tick={{ fontSize: 11, fill: "#94a3b8" }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(val) => {
+                  const num = Number(val);
+                  if (num === 0) return "0";
+                  if (num >= 1_000_000) return `LKR ${(num / 1_000_000).toFixed(1)}M`;
+                  if (num >= 1_000) return `LKR ${Math.round(num / 1_000)}k`;
+                  return `LKR ${num}`;
+                }}
+                width={80}
+              />
               <Tooltip
                 contentStyle={{
                   borderRadius: 12,
                   border: "1px solid #e2e8f0",
                   boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
                   fontSize: 12,
+                }}
+                labelFormatter={(label) => {
+                  try {
+                    const parts = String(label).split("-");
+                    if (parts.length === 3) {
+                      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                      const m = months[parseInt(parts[1], 10) - 1] || parts[1];
+                      return `${m} ${parts[2]}, ${parts[0]}`;
+                    }
+                    return label;
+                  } catch {
+                    return label;
+                  }
                 }}
                 formatter={(value, name) => {
                   const num = typeof value === "number" ? value : Number(value || 0);
@@ -315,7 +360,7 @@ export function StockHealthCard({ data }: { data: StockBreakdownData }) {
         {/* Header */}
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h3 className="text-base font-semibold text-slate-900">Stock Health & Alerts</h3>
+            <h3 className="text-base font-semibold text-slate-900">Stock Overview & Alerts</h3>
             <p className="text-xs text-slate-500">Inventory ratio and items needing replenishment</p>
           </div>
           <Link
@@ -393,16 +438,23 @@ export function StockHealthCard({ data }: { data: StockBreakdownData }) {
             <div className="divide-y divide-slate-100">
               {urgentItems.map((item) => (
                 <div key={item._id} className="flex items-center justify-between py-2 gap-3">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400 overflow-hidden">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400 overflow-hidden"
+                      title={item.name}
+                    >
                       {item.images && item.images[0] ? (
                         <Image src={item.images[0]} alt={item.name} width={32} height={32} unoptimized className="h-full w-full object-cover" />
                       ) : (
                         <Package className="h-4 w-4" />
                       )}
                     </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-medium text-slate-800">{item.name}</p>
+                    <div className="min-w-0 flex-1">
+                      <UITooltip content={item.name}>
+                        <p className="truncate text-xs font-medium text-slate-800 hover:text-brand cursor-default transition-colors">
+                          {item.name}
+                        </p>
+                      </UITooltip>
                       <p className="text-[11px] text-slate-400 truncate">SKU: {item.sku}</p>
                     </div>
                   </div>

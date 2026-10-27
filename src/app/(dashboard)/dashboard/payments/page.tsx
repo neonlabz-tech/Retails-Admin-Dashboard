@@ -13,6 +13,7 @@ interface PaymentRow {
   _id: string;
   orderNumber: string;
   customer: { name: string; email: string } | null;
+  order?: { customerSnapshot?: { name: string; email: string } } | null;
   amount: number;
   method: string;
   status: string;
@@ -25,6 +26,7 @@ interface PaymentRow {
 const statusColors: Record<string, "yellow" | "green" | "red" | "slate"> = {
   pending: "yellow",
   completed: "green",
+  cancelled: "red",
   failed: "red",
   refunded: "slate",
 };
@@ -36,29 +38,12 @@ export default function PaymentsPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
   const [method, setMethod] = useState("");
-  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
-  const statusMenuRef = useRef<HTMLDivElement>(null);
-  const [methodMenuOpen, setMethodMenuOpen] = useState(false);
-  const methodMenuRef = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ total: 0, totalPages: 1, limit: 10 });
   const [detail, setDetail] = useState<PaymentRow | null>(null);
   const [newStatus, setNewStatus] = useState("");
   const [transactionId, setTransactionId] = useState("");
   const [updating, setUpdating] = useState(false);
-
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (statusMenuRef.current && !statusMenuRef.current.contains(e.target as Node)) {
-        setStatusMenuOpen(false);
-      }
-      if (methodMenuRef.current && !methodMenuRef.current.contains(e.target as Node)) {
-        setMethodMenuOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -72,7 +57,10 @@ export default function PaymentsPage() {
       const res = await fetch(`/api/payments?${params.toString()}`);
       const json = await res.json();
       if (json.success) {
-        setPayments(json.data.payments);
+        const normalized = (json.data.payments as PaymentRow[]).map((p) =>
+          p.status === "failed" ? { ...p, status: "cancelled" } : p
+        );
+        setPayments(normalized);
         setMeta(json.data.meta);
       }
     } finally {
@@ -81,12 +69,14 @@ export default function PaymentsPage() {
   }, [search, status, method, page]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 
   function openDetail(payment: PaymentRow) {
-    setDetail(payment);
-    setNewStatus(payment.status);
+    const normalizedStatus = payment.status === "failed" ? "cancelled" : payment.status;
+    setDetail({ ...payment, status: normalizedStatus });
+    setNewStatus(normalizedStatus);
     setTransactionId(payment.transactionId || "");
   }
 
@@ -126,7 +116,7 @@ export default function PaymentsPage() {
           </div>
         ),
       },
-      { header: "Customer", key: "customer", render: (p) => p.customer?.name || "-" },
+      { header: "Customer", key: "customer", render: (p) => p.customer?.name || p.order?.customerSnapshot?.name || "-" },
       { header: "Amount", key: "amount", render: (p) => formatCurrency(p.amount) },
       { header: "Method", key: "method", render: (p) => <Badge color="blue">{p.method.replace("_", " ")}</Badge> },
       { header: "Status", key: "status", render: (p) => <Badge color={statusColors[p.status] || "slate"}>{p.status}</Badge> },
@@ -153,183 +143,64 @@ export default function PaymentsPage() {
 
       <Card className="p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <SearchInput className="flex-1 w-full" value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Search order number..." />
+          <SearchInput className="flex-1 w-full" value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Search order number or transaction ID..." />
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             {/* Status Filter */}
-            <div className="relative" ref={statusMenuRef}>
-              <button
-                type="button"
-                onClick={() => {
-                  setMethodMenuOpen(false);
-                  setStatusMenuOpen((v) => !v);
+            <div className="relative">
+              <select
+                value={status}
+                onChange={(e) => {
+                  setStatus(e.target.value);
+                  setPage(1);
                 }}
-                className={cn(
-                  "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm outline-none transition cursor-pointer select-none shadow-xs",
-                  status
-                    ? "border-brand bg-brand-light/40 text-brand font-medium"
-                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                )}
-                title="Filter by status"
+                className="appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-3.5 pr-8 text-xs font-medium text-slate-700 outline-none focus:border-brand focus:ring-1 focus:ring-brand shadow-xs transition cursor-pointer hover:border-slate-300"
               >
-                <span className="capitalize">{status ? status : "All statuses"}</span>
-                {status ? (
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setStatus("");
-                      setPage(1);
-                    }}
-                    className="ml-0.5 rounded p-0.5 hover:bg-brand/10 text-brand transition cursor-pointer"
-                    title="Clear status filter"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </span>
-                ) : null}
-                <ChevronDown
-                  className={cn(
-                    "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
-                    status ? "text-brand" : "text-slate-400",
-                    statusMenuOpen && "rotate-180"
-                  )}
-                />
-              </button>
-
-              {statusMenuOpen && (
-                <div className="absolute right-0 top-full z-30 mt-1.5 w-44 rounded-xl border border-slate-200/90 bg-white p-1.5 shadow-xl shadow-slate-900/10 animate-modal-in">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStatus("");
-                      setPage(1);
-                      setStatusMenuOpen(false);
-                    }}
-                    className={cn(
-                      "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium text-left transition cursor-pointer",
-                      !status
-                        ? "bg-brand/10 text-brand font-semibold"
-                        : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"
-                    )}
-                  >
-                    <span>All statuses</span>
-                    {!status && <Check className="h-3.5 w-3.5 text-brand" />}
-                  </button>
-                  <div className="my-1 border-t border-slate-100" />
-                  <div className="max-h-56 overflow-y-auto space-y-0.5">
-                    {PAYMENT_RECORD_STATUSES.map((s) => {
-                      const isCurrent = status === s;
-                      return (
-                        <button
-                          key={s}
-                          type="button"
-                          onClick={() => {
-                            setStatus(s);
-                            setPage(1);
-                            setStatusMenuOpen(false);
-                          }}
-                          className={cn(
-                            "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium text-left capitalize transition cursor-pointer",
-                            isCurrent
-                              ? "bg-brand/10 text-brand font-semibold"
-                              : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"
-                          )}
-                        >
-                          <span>{s}</span>
-                          {isCurrent && <Check className="h-3.5 w-3.5 text-brand" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+                <option value="">All statuses</option>
+                {PAYMENT_RECORD_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
             </div>
 
             {/* Method Filter */}
-            <div className="relative" ref={methodMenuRef}>
+            <div className="relative">
+              <select
+                value={method}
+                onChange={(e) => {
+                  setMethod(e.target.value);
+                  setPage(1);
+                }}
+                className="appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-3.5 pr-8 text-xs font-medium text-slate-700 outline-none focus:border-brand focus:ring-1 focus:ring-brand shadow-xs transition cursor-pointer hover:border-slate-300"
+              >
+                <option value="">All methods</option>
+                {PAYMENT_METHODS.map((m) => (
+                  <option key={m} value={m}>
+                    {m.replace("_", " ").charAt(0).toUpperCase() + m.replace("_", " ").slice(1)}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            </div>
+
+            {/* Reset Filter Button */}
+            {(status || method) && (
               <button
                 type="button"
                 onClick={() => {
-                  setStatusMenuOpen(false);
-                  setMethodMenuOpen((v) => !v);
+                  setStatus("");
+                  setMethod("");
+                  setPage(1);
                 }}
-                className={cn(
-                  "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm outline-none transition cursor-pointer select-none shadow-xs",
-                  method
-                    ? "border-brand bg-brand-light/40 text-brand font-medium"
-                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                )}
-                title="Filter by payment method"
+                className="flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 cursor-pointer transition shadow-xs"
+                title="Reset filters"
               >
-                <span className="capitalize">{method ? method.replace("_", " ") : "All methods"}</span>
-                {method ? (
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setMethod("");
-                      setPage(1);
-                    }}
-                    className="ml-0.5 rounded p-0.5 hover:bg-brand/10 text-brand transition cursor-pointer"
-                    title="Clear method filter"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </span>
-                ) : null}
-                <ChevronDown
-                  className={cn(
-                    "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
-                    method ? "text-brand" : "text-slate-400",
-                    methodMenuOpen && "rotate-180"
-                  )}
-                />
+                <X className="h-3.5 w-3.5 text-slate-400" />
+                <span>Reset</span>
               </button>
-
-              {methodMenuOpen && (
-                <div className="absolute right-0 top-full z-30 mt-1.5 w-48 rounded-xl border border-slate-200/90 bg-white p-1.5 shadow-xl shadow-slate-900/10 animate-modal-in">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMethod("");
-                      setPage(1);
-                      setMethodMenuOpen(false);
-                    }}
-                    className={cn(
-                      "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium text-left transition cursor-pointer",
-                      !method
-                        ? "bg-brand/10 text-brand font-semibold"
-                        : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"
-                    )}
-                  >
-                    <span>All methods</span>
-                    {!method && <Check className="h-3.5 w-3.5 text-brand" />}
-                  </button>
-                  <div className="my-1 border-t border-slate-100" />
-                  <div className="max-h-56 overflow-y-auto space-y-0.5">
-                    {PAYMENT_METHODS.map((m) => {
-                      const isCurrent = method === m;
-                      return (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => {
-                            setMethod(m);
-                            setPage(1);
-                            setMethodMenuOpen(false);
-                          }}
-                          className={cn(
-                            "flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium text-left capitalize transition cursor-pointer",
-                            isCurrent
-                              ? "bg-brand/10 text-brand font-semibold"
-                              : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"
-                          )}
-                        >
-                          <span>{m.replace("_", " ")}</span>
-                          {isCurrent && <Check className="h-3.5 w-3.5 text-brand" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
+            )}
           </div>
         </div>
       </Card>
@@ -367,7 +238,7 @@ export default function PaymentsPage() {
               </div>
               <div className="rounded-lg bg-slate-50 p-3">
                 <p className="text-xs text-slate-400">Customer</p>
-                <p className="font-semibold text-slate-800">{detail.customer?.name || "-"}</p>
+                <p className="font-semibold text-slate-800">{detail.customer?.name || detail.order?.customerSnapshot?.name || "-"}</p>
               </div>
               <div className="rounded-lg bg-slate-50 p-3">
                 <p className="text-xs text-slate-400">Paid at</p>

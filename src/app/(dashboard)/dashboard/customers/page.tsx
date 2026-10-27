@@ -2,12 +2,12 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Eye, ShieldCheck, ShieldOff, UserRound } from "lucide-react";
-import { Button, Badge, Card, Switch } from "@/components/ui/primitives";
+import { Eye, ShieldCheck, ShieldOff, UserRound, ChevronDown, Check, X } from "lucide-react";
+import { Badge, Card, Switch } from "@/components/ui/primitives";
 import { DataTable, type Column, Pagination, SearchInput } from "@/components/ui/table";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { formatCurrency, formatDate, formatDateTime, formatOrderId } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, formatDateTime, formatOrderId } from "@/lib/utils";
 
 interface CustomerRow {
   _id: string;
@@ -29,6 +29,16 @@ interface OrderSummary {
   createdAt: string;
 }
 
+const CUSTOMER_STATUS_OPTIONS = [
+  { key: "active", label: "Active" },
+  { key: "inactive", label: "Suspended" },
+] as const;
+
+const CUSTOMER_VERIFICATION_OPTIONS = [
+  { key: "verified", label: "Verified" },
+  { key: "unverified", label: "Unverified" },
+] as const;
+
 function CustomersContent() {
   const toast = useToast();
   const searchParams = useSearchParams();
@@ -39,6 +49,7 @@ function CustomersContent() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(querySearch);
   const [statusFilter, setStatusFilter] = useState("");
+  const [verificationFilter, setVerificationFilter] = useState("");
   const [page, setPage] = useState(1);
   const [meta, setMeta] = useState({ total: 0, totalPages: 1, limit: 10 });
 
@@ -53,6 +64,7 @@ function CustomersContent() {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
       if (statusFilter) params.set("status", statusFilter);
+      if (verificationFilter) params.set("verification", verificationFilter);
       params.set("page", String(page));
       params.set("limit", "10");
       const res = await fetch(`/api/customers?${params.toString()}`);
@@ -64,9 +76,10 @@ function CustomersContent() {
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter, page]);
+  }, [search, statusFilter, verificationFilter, page]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 
@@ -105,7 +118,10 @@ function CustomersContent() {
     try {
       const res = await fetch(`/api/customers/${customer._id}`);
       const json = await res.json();
-      if (json.success) setOrders(json.data.orders);
+      if (json.success) {
+        if (json.data.customer) setDetail(json.data.customer);
+        setOrders(json.data.orders);
+      }
     } finally {
       setDetailLoading(false);
     }
@@ -131,6 +147,26 @@ function CustomersContent() {
     }
   }
 
+  async function toggleVerification(customer: CustomerRow, isVerified: boolean) {
+    try {
+      const res = await fetch(`/api/customers/${customer._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isVerified }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        toast.error(json.message || "Failed to update customer");
+        return;
+      }
+      toast.success(json.message);
+      load();
+      if (detail?._id === customer._id) setDetail({ ...detail, isVerified });
+    } catch {
+      toast.error("Something went wrong");
+    }
+  }
+
   const columns: Column<CustomerRow>[] = useMemo(
     () => [
       {
@@ -151,7 +187,25 @@ function CustomersContent() {
       { header: "Phone", key: "phone", render: (c) => c.phone || "-" },
       { header: "Orders", key: "totalOrders" },
       { header: "Total Spent", key: "totalSpent", render: (c) => formatCurrency(c.totalSpent) },
-      { header: "Verified", key: "isVerified", render: (c) => <Badge color={c.isVerified ? "green" : "yellow"}>{c.isVerified ? "Verified" : "Unverified"}</Badge> },
+      {
+        header: "Verified",
+        key: "isVerified",
+        render: (c) => (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleVerification(c, !c.isVerified);
+            }}
+            className="cursor-pointer transition hover:opacity-80"
+            title={c.isVerified ? "Click to set unverified" : "Click to set verified"}
+          >
+            <Badge color={c.isVerified ? "green" : "yellow"}>
+              {c.isVerified ? "Verified" : "Unverified"}
+            </Badge>
+          </button>
+        ),
+      },
       { header: "Status", key: "isActive", render: (c) => <Badge color={c.isActive ? "green" : "red"}>{c.isActive ? "Active" : "Suspended"}</Badge> },
       { header: "Joined", key: "createdAt", render: (c) => formatDate(c.createdAt) },
       {
@@ -188,23 +242,62 @@ function CustomersContent() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <SearchInput className="flex-1 w-full" value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Search by name, email or phone..." />
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            {[
-              { key: "", label: "All" },
-              { key: "active", label: "Active" },
-              { key: "inactive", label: "Suspended" },
-              { key: "verified", label: "Verified" },
-              { key: "unverified", label: "Unverified" },
-            ].map((opt) => (
-              <button
-                key={opt.key}
-                onClick={() => { setStatusFilter(opt.key); setPage(1); }}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                  statusFilter === opt.key ? "bg-brand text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}
+            {/* Status Filter */}
+            <div className="relative">
+              <select
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setPage(1);
+                }}
+                className="appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-3.5 pr-8 text-xs font-medium text-slate-700 outline-none focus:border-brand focus:ring-1 focus:ring-brand shadow-xs transition cursor-pointer hover:border-slate-300"
               >
-                {opt.label}
+                <option value="">All statuses</option>
+                {CUSTOMER_STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.key} value={opt.key}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            </div>
+
+            {/* Verification Filter */}
+            <div className="relative">
+              <select
+                value={verificationFilter}
+                onChange={(e) => {
+                  setVerificationFilter(e.target.value);
+                  setPage(1);
+                }}
+                className="appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-3.5 pr-8 text-xs font-medium text-slate-700 outline-none focus:border-brand focus:ring-1 focus:ring-brand shadow-xs transition cursor-pointer hover:border-slate-300"
+              >
+                <option value="">All verification</option>
+                {CUSTOMER_VERIFICATION_OPTIONS.map((opt) => (
+                  <option key={opt.key} value={opt.key}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            </div>
+
+            {/* Reset Filter Button */}
+            {(statusFilter || verificationFilter) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusFilter("");
+                  setVerificationFilter("");
+                  setPage(1);
+                }}
+                className="flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 cursor-pointer transition shadow-xs"
+                title="Reset filters"
+              >
+                <X className="h-3.5 w-3.5 text-slate-400" />
+                <span>Reset</span>
               </button>
-            ))}
+            )}
           </div>
         </div>
       </Card>
@@ -238,9 +331,18 @@ function CustomersContent() {
                 <p className="text-xs text-slate-400">Total Spent</p>
                 <p className="text-lg font-semibold text-slate-800">{formatCurrency(detail.totalSpent)}</p>
               </div>
-              <div className="rounded-xl bg-slate-50 p-3 text-center">
+              <div className="rounded-xl bg-slate-50 p-3 text-center flex flex-col items-center justify-center">
                 <p className="text-xs text-slate-400">Verification</p>
-                <Badge color={detail.isVerified ? "green" : "yellow"}>{detail.isVerified ? "Verified" : "Unverified"}</Badge>
+                <button
+                  type="button"
+                  onClick={() => toggleVerification(detail, !detail.isVerified)}
+                  className="mt-1 cursor-pointer transition hover:opacity-80"
+                  title={detail.isVerified ? "Click to set unverified" : "Click to set verified"}
+                >
+                  <Badge color={detail.isVerified ? "green" : "yellow"}>
+                    {detail.isVerified ? "Verified" : "Unverified"}
+                  </Badge>
+                </button>
               </div>
             </div>
 

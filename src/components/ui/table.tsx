@@ -31,7 +31,13 @@ export function DataTable<T extends { _id?: string; id?: string }>({
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50/80">
             {columns.map((col) => (
-              <th key={col.key} className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <th
+                key={col.key}
+                className={cn(
+                  "whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500",
+                  col.className
+                )}
+              >
                 {col.header}
               </th>
             ))}

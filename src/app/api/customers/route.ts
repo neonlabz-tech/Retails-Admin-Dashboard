@@ -12,20 +12,22 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") || "";
     const status = searchParams.get("status") || "";
+    const verification = searchParams.get("verification") || "";
     const { page, limit, skip } = getPaginationParams(searchParams);
 
     const filter: Record<string, unknown> = {};
     if (search) {
+      const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       filter.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } },
-        { phone: { $regex: search, $options: "i" } },
+        { name: { $regex: escapedSearch, $options: "i" } },
+        { email: { $regex: escapedSearch, $options: "i" } },
+        { phone: { $regex: escapedSearch, $options: "i" } },
       ];
     }
     if (status === "active") filter.isActive = true;
     if (status === "inactive") filter.isActive = false;
-    if (status === "verified") filter.isVerified = true;
-    if (status === "unverified") filter.isVerified = false;
+    if (status === "verified" || verification === "verified") filter.isVerified = true;
+    if (status === "unverified" || verification === "unverified") filter.isVerified = false;
 
     const [customers, total] = await Promise.all([
       Customer.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),

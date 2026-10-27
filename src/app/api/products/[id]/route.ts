@@ -1,11 +1,15 @@
 import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Product } from "@/models/Product";
+import "@/models/Category";
 import { Order } from "@/models/Order";
+import { StockLog } from "@/models/StockLog";
 import { productSchema } from "@/lib/validators";
 import { apiError, apiSuccess, handleApiError } from "@/lib/api-utils";
 import { slugify, escapeRegex } from "@/lib/utils";
 import { deleteFile, getKeyFromUrl } from "@/lib/r2";
+import { notifyLowStock } from "@/lib/notify";
+import { getSession } from "@/lib/auth";
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -55,11 +59,41 @@ export async function PUT(request: NextRequest, { params }: Params) {
       .map((img) => getKeyFromUrl(img))
       .filter((k): k is string => Boolean(k));
 
+    const tags = Array.isArray(data.tags)
+      ? data.tags.map((t) => String(t).trim()).filter(Boolean)
+      : typeof data.tags === "string"
+      ? (data.tags as string).split(",").map((t) => t.trim()).filter(Boolean)
+      : [];
+
     const product = await Product.findByIdAndUpdate(
       id,
-      { ...data, slug, imageKeys: updatedImageKeys },
+      { ...data, tags, slug, imageKeys: updatedImageKeys },
       { new: true }
     );
+    if (!product) return apiError("Product not found", 404);
+
+    const previousStock = current.stock;
+    const newStock = product.stock;
+
+    if (previousStock !== newStock) {
+      const session = await getSession();
+      const diff = newStock - previousStock;
+      await StockLog.create({
+        product: product._id,
+        productName: product.name,
+        type: diff > 0 ? "increase" : "decrease",
+        quantity: Math.abs(diff),
+        previousStock,
+        newStock,
+        reason: "Manual adjustment via product edit",
+        admin: session?.adminId,
+        adminName: session?.name || "Admin",
+      });
+    }
+
+    if (newStock <= product.lowStockThreshold) {
+      await notifyLowStock({ _id: product._id, name: product.name, stock: newStock });
+    }
 
     return apiSuccess(product, "Product updated successfully");
   } catch (err) {

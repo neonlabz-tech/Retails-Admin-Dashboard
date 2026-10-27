@@ -15,9 +15,11 @@ export interface IProduct extends Document {
   price: number;
   salePrice?: number | null;
   sku: string;
+  weight?: number;
   images: string[];
   imageKeys: string[];
   specifications: ISpecification[];
+  tags?: string[];
   stock: number;
   lowStockThreshold: number;
   status: ProductStatus;
@@ -37,12 +39,14 @@ const ProductSchema = new Schema<IProduct>(
     price: { type: Number, required: true, min: 0 },
     salePrice: { type: Number, min: 0, default: null },
     sku: { type: String, required: true, unique: true, trim: true },
+    weight: { type: Number, default: 0, min: 0 },
     images: { type: [String], default: [] },
     imageKeys: { type: [String], default: [] },
     specifications: {
       type: [{ key: { type: String }, value: { type: String } }],
       default: [],
     },
+    tags: { type: [String], default: [] },
     stock: { type: Number, default: 0, min: 0 },
     lowStockThreshold: { type: Number, default: 5, min: 0 },
     status: { type: String, enum: PRODUCT_STATUSES, default: "active" },
@@ -53,6 +57,10 @@ const ProductSchema = new Schema<IProduct>(
 );
 
 ProductSchema.index({ name: "text", sku: "text" });
+
+if (mongoose.models.Product && !mongoose.models.Product.schema.paths.weight) {
+  delete mongoose.models.Product;
+}
 
 export const Product: Model<IProduct> =
   mongoose.models.Product || mongoose.model<IProduct>("Product", ProductSchema);

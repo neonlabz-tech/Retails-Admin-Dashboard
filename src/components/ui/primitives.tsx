@@ -181,12 +181,14 @@ export function StatCard({
   icon,
   color = "indigo",
   trend,
+  className,
 }: {
   label: string;
   value: string | number;
   icon: ReactNode;
   color?: "indigo" | "emerald" | "rose" | "amber" | "sky" | "violet" | "purple" | "cyan";
   trend?: string;
+  className?: string;
 }) {
   const colors: Record<string, string> = {
     indigo: "bg-blue-50 text-brand border border-brand/20",
@@ -198,13 +200,40 @@ export function StatCard({
     purple: "bg-purple-50 text-purple-600 border border-purple-200",
     cyan: "bg-cyan-50 text-cyan-600 border border-cyan-200",
   };
+
+  const renderValue = () => {
+    if (typeof value === "string") {
+      const match = value.match(/^([+-]?LKR)\s+(.+)$/i);
+      if (match) {
+        return (
+          <span className="inline-flex items-baseline gap-1.5">
+            <span className="text-xs sm:text-sm font-bold tracking-tight text-slate-800">
+              {match[1]}
+            </span>
+            <span>{match[2]}</span>
+          </span>
+        );
+      }
+    }
+    return value;
+  };
+
   return (
-    <div className="rounded-2xl metric-card-gradient p-6 shadow-[0_10px_25px_-4px_rgba(15,23,42,0.12),0_4px_10px_-2px_rgba(15,23,42,0.08)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-4px_rgba(15,23,42,0.16)]">
+    <div
+      style={{
+        background: "linear-gradient(135deg, #e1ecfa 0%, #d4e4f7 100%)",
+        borderColor: "rgba(15, 30, 65, 0.35)",
+      }}
+      className={cn(
+        "rounded-2xl border border-[#0f1e41]/35 bg-gradient-to-br from-[#e1ecfa] to-[#d4e4f7] metric-card-gradient p-6 shadow-[0_10px_25px_-4px_rgba(15,23,42,0.12),0_4px_10px_-2px_rgba(15,23,42,0.08)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_12px_28px_-4px_rgba(15,23,42,0.16)]",
+        className
+      )}
+    >
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-slate-600">{label}</p>
         <div className={cn("flex h-9 w-9 items-center justify-center rounded-xl shadow-xs", colors[color])}>{icon}</div>
       </div>
-      <p className="mt-4 text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">{value}</p>
+      <p className="mt-4 text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">{renderValue()}</p>
       {trend && <p className="mt-1.5 text-xs font-medium text-slate-500">{trend}</p>}
     </div>
   );
@@ -340,3 +369,5 @@ export function PageHeader({
   );
 }
 
+export { Tooltip } from "./tooltip";
+export type { TooltipProps } from "./tooltip";

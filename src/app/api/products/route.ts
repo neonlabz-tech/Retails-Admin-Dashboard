@@ -1,11 +1,13 @@
 import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Product } from "@/models/Product";
+import "@/models/Category";
 import { productSchema } from "@/lib/validators";
 import { apiError, apiSuccess, handleApiError } from "@/lib/api-utils";
 import { slugify, getPaginationParams, buildPaginationMeta, escapeRegex } from "@/lib/utils";
 import { getKeyFromUrl } from "@/lib/r2";
 import { generateNextSku } from "@/lib/sku";
+import { notifyLowStock } from "@/lib/notify";
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,9 +24,11 @@ export async function GET(request: NextRequest) {
 
     const filter: Record<string, unknown> = {};
     if (search) {
+      const escaped = escapeRegex(search);
       filter.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { sku: { $regex: search, $options: "i" } },
+        { name: { $regex: escaped, $options: "i" } },
+        { sku: { $regex: escaped, $options: "i" } },
+        { tags: { $regex: escaped, $options: "i" } },
       ];
     }
     if (category) filter.category = category;
@@ -74,7 +78,16 @@ export async function POST(request: NextRequest) {
       .map((img) => getKeyFromUrl(img))
       .filter((k): k is string => Boolean(k));
 
-    const product = await Product.create({ ...data, sku, slug, imageKeys });
+    const tags = Array.isArray(data.tags)
+      ? data.tags.map((t) => String(t).trim()).filter(Boolean)
+      : typeof data.tags === "string"
+      ? (data.tags as string).split(",").map((t) => t.trim()).filter(Boolean)
+      : [];
+
+    const product = await Product.create({ ...data, tags, sku, slug, imageKeys });
+    if (product.stock <= product.lowStockThreshold) {
+      await notifyLowStock({ _id: product._id, name: product.name, stock: product.stock });
+    }
     return apiSuccess(product, "Product created successfully", 201);
   } catch (err) {
     return handleApiError(err);

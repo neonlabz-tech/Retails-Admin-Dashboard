@@ -8,7 +8,7 @@ export function DashboardShell({
   admin,
   children,
 }: {
-  admin: { name: string; email: string; role: string } | null;
+  admin: { name: string; email: string; role: string; avatar?: string } | null;
   children: ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);

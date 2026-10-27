@@ -70,7 +70,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         effectivePayStatus === "paid"
           ? "completed"
           : effectivePayStatus === "failed"
-          ? "cancelled"
+          ? "failed"
           : effectivePayStatus === "refunded"
           ? "refunded"
           : "pending";

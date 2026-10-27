@@ -12,6 +12,8 @@ import {
   Clock,
   CheckCircle2,
   Ban,
+  Receipt,
+  TrendingUp,
 } from "lucide-react";
 import { Card, StatCard, Badge } from "@/components/ui/primitives";
 import { formatCurrency, formatDateTime, formatOrderId } from "@/lib/utils";
@@ -26,6 +28,9 @@ interface DashboardStats {
     totalCustomers: number;
     totalOrders: number;
     totalSales: number;
+    totalRevenue?: number;
+    totalExpenses?: number;
+    totalProfit?: number;
     availableStock: number;
     lowStockProducts: number;
     outOfStockProducts: number;
@@ -92,21 +97,29 @@ export default async function DashboardOverviewPage() {
         <p className="mt-0.5 text-xs sm:text-sm text-slate-500">A quick summary of your store&apos;s performance.</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Row 1: Total Sales, Total Expenses, Total Profit */}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="Total Sales" value={formatCurrency(totals.totalSales)} icon={<Banknote className="h-4.5 w-4.5" />} color="emerald" />
-        <StatCard label="Total Profit" value={formatCurrency(totals.totalSales ? totals.totalSales * 0.35 : 450)} icon={<Coins className="h-4.5 w-4.5" />} color="violet" />
+        <StatCard label="Total Expenses" value={formatCurrency(totals.totalExpenses ?? 0)} icon={<Receipt className="h-4.5 w-4.5" />} color="rose" />
+        <StatCard label="Total Profit" value={formatCurrency(totals.totalProfit ?? 0)} icon={<Coins className="h-4.5 w-4.5" />} color="violet" />
+      </div>
+
+      {/* Row 2: Total Revenue, Total Orders, Total Products */}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <StatCard label="Total Revenue" value={formatCurrency(totals.totalRevenue ?? totals.totalSales ?? 0)} icon={<TrendingUp className="h-4.5 w-4.5" />} color="cyan" />
         <StatCard label="Total Orders" value={totals.totalOrders} icon={<ShoppingCart className="h-4.5 w-4.5" />} color="indigo" />
         <StatCard label="Total Products" value={totals.totalProducts} icon={<Package className="h-4.5 w-4.5" />} color="sky" />
       </div>
 
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Commented previous cards for future reference */}
+      {/* <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Pending Orders" value={totals.pendingOrders} icon={<Clock className="h-4.5 w-4.5" />} color="amber" />
         <StatCard label="Completed Orders" value={totals.completedOrders} icon={<CheckCircle2 className="h-4.5 w-4.5" />} color="emerald" />
         <StatCard label="Cancelled Orders" value={totals.cancelledOrders} icon={<Ban className="h-4.5 w-4.5" />} color="rose" />
         <StatCard label="Available Stock" value={totals.availableStock} icon={<Boxes className="h-4.5 w-4.5" />} color="cyan" />
-      </div>
+      </div> */}
 
-      {(totals.lowStockProducts > 0 || totals.outOfStockProducts > 0) && (
+      {/* {(totals.lowStockProducts > 0 || totals.outOfStockProducts > 0) && (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
           {totals.lowStockProducts > 0 && (
             <div className="flex items-center gap-3 rounded-2xl border border-amber-200/90 bg-amber-50 px-5 py-4 text-sm text-amber-900 shadow-[0_2px_10px_rgba(245,158,11,0.05)]">
@@ -131,7 +144,7 @@ export default async function DashboardOverviewPage() {
             </div>
           )}
         </div>
-      )}
+      )} */}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <Card className="p-6 lg:col-span-2">
@@ -141,7 +154,6 @@ export default async function DashboardOverviewPage() {
           <div className="mb-6 flex items-center justify-between">
             <h3 className="text-base font-semibold text-slate-900">Orders by Status</h3>
             <button className="text-slate-400 hover:text-slate-600 transition-colors">
-              <span className="text-lg font-bold tracking-widest leading-none">•••</span>
             </button>
           </div>
           <OrderStatusPieChart data={stats.ordersByStatus} />

@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Order } from "@/models/Order";
-import { Product } from "@/models/Product";
+import { Product, type IProduct } from "@/models/Product";
 import { Customer } from "@/models/Customer";
 import { Payment } from "@/models/Payment";
+import type { IOrderItem } from "@/models/Order";
 import { createOrderSchema } from "@/lib/validators";
 import { apiError, apiSuccess, handleApiError } from "@/lib/api-utils";
-import { getPaginationParams, buildPaginationMeta, generateOrderNumber, formatCurrency } from "@/lib/utils";
+import { getPaginationParams, buildPaginationMeta, generateOrderNumber, formatCurrency, escapeRegex } from "@/lib/utils";
 import { notifyNewOrder, notifyLowStock } from "@/lib/notify";
 import { type OrderStatus, type PaymentStatus, type PaymentRecordStatus } from "@/lib/constants";
 
@@ -16,7 +17,7 @@ export async function GET(request: NextRequest) {
 
     // Ensure orders with pending payments default to "processing" order status
     await Order.updateMany(
-      { paymentStatus: "pending", status: "pending" },
+      { paymentStatus: "pending", status: "pending" as any },
       { $set: { status: "processing" } }
     );
 
@@ -33,10 +34,11 @@ export async function GET(request: NextRequest) {
 
     const filter: Record<string, unknown> = {};
     if (search) {
+      const escaped = escapeRegex(search);
       filter.$or = [
-        { orderNumber: { $regex: search, $options: "i" } },
-        { "customerSnapshot.name": { $regex: search, $options: "i" } },
-        { "customerSnapshot.email": { $regex: search, $options: "i" } },
+        { orderNumber: { $regex: escaped, $options: "i" } },
+        { "customerSnapshot.name": { $regex: escaped, $options: "i" } },
+        { "customerSnapshot.email": { $regex: escaped, $options: "i" } },
       ];
     }
     if (status) filter.status = status;
@@ -90,7 +92,8 @@ export async function POST(request: NextRequest) {
     if (!customer) return apiError("Customer not found", 404);
 
     let subtotal = 0;
-    const items = [];
+    const items: IOrderItem[] = [];
+    const productsToUpdate: Array<{ product: IProduct; quantity: number }> = [];
     for (const item of data.items) {
       const product = await Product.findById(item.productId);
       if (!product) return apiError(`Product not found: ${item.productId}`, 404);
@@ -108,13 +111,7 @@ export async function POST(request: NextRequest) {
         quantity: item.quantity,
         subtotal: lineSubtotal,
       });
-
-      product.stock -= item.quantity;
-      product.totalSold = (product.totalSold || 0) + item.quantity;
-      await product.save();
-      if (product.stock <= product.lowStockThreshold) {
-        await notifyLowStock({ _id: product._id, name: product.name, stock: product.stock });
-      }
+      productsToUpdate.push({ product, quantity: item.quantity });
     }
 
     const total = subtotal - data.discount + data.shippingFee + data.tax;
@@ -126,20 +123,12 @@ export async function POST(request: NextRequest) {
     const initialPaymentStatus: PaymentStatus =
       data.paymentStatus || "pending";
 
-    // Order status:
-    // - For pending or paid payments (including COD): default order status is "processing"
-    // - If payment failed: default order status is "pending"
+    // Order status: default is "processing"
     let initialOrderStatus: OrderStatus;
     if (data.status) {
       initialOrderStatus = data.status;
-    } else if (
-      data.paymentMethod === "cod" ||
-      initialPaymentStatus === "pending" ||
-      initialPaymentStatus === "paid"
-    ) {
-      initialOrderStatus = "processing";
     } else {
-      initialOrderStatus = "pending";
+      initialOrderStatus = "processing";
     }
 
     const historyNote =
@@ -151,7 +140,7 @@ export async function POST(request: NextRequest) {
         ? "Order created — Payment Failed"
         : "Order created — Processing (Payment Pending)";
 
-    const order = await Order.create({
+    const order = new Order({
       orderNumber,
       customer: customer._id,
       customerSnapshot: { name: customer.name, email: customer.email, phone: customer.phone },
@@ -169,6 +158,18 @@ export async function POST(request: NextRequest) {
       notes: data.notes,
       statusHistory: [{ status: initialOrderStatus, changedAt: new Date(), note: historyNote }],
     });
+    await order.validate();
+
+    for (const { product, quantity } of productsToUpdate) {
+      product.stock -= quantity;
+      product.totalSold = (product.totalSold || 0) + quantity;
+      await product.save();
+      if (product.stock <= product.lowStockThreshold) {
+        await notifyLowStock({ _id: product._id, name: product.name, stock: product.stock });
+      }
+    }
+
+    await order.save();
 
     const paymentRecordStatus: PaymentRecordStatus =
       initialPaymentStatus === "paid"

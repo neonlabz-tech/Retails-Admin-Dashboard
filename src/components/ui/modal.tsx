@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode, useEffect } from "react";
-import { X, AlertTriangle } from "lucide-react";
+import { X, AlertCircle } from "lucide-react";
 import { createPortal } from "react-dom";
 import { Button } from "./primitives";
 import { cn } from "@/lib/utils";
@@ -74,7 +74,7 @@ export function ConfirmDialog({
   open,
   title = "Are you sure?",
   description,
-  confirmLabel = "Confirm",
+  confirmLabel = "Delete",
   variant = "danger",
   loading,
   onConfirm,
@@ -91,24 +91,49 @@ export function ConfirmDialog({
 }) {
   if (!open || typeof document === "undefined") return null;
   return createPortal(
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
-      <div className="animate-modal-in w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-50 text-rose-500">
-            <AlertTriangle className="h-5 w-5" />
-          </div>
-          <div>
-            <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-            {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
-          </div>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-xs">
+      <div className="animate-modal-in w-full max-w-[360px] rounded-3xl bg-white p-7 text-center shadow-2xl">
+        {/* Centered Glowing Red Circle Icon */}
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-rose-50 text-rose-500 ring-8 ring-rose-50/60">
+          <AlertCircle className="h-7 w-7" strokeWidth={2.2} />
         </div>
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="secondary" onClick={onCancel} disabled={loading}>
+
+        {/* Title */}
+        <h3 className="mt-5 text-lg font-bold text-slate-900 leading-snug">{title}</h3>
+
+        {/* Description */}
+        {description && (
+          <p className="mt-2 text-xs text-slate-500 leading-relaxed px-1">
+            {description}
+          </p>
+        )}
+
+        {/* Buttons (Side by Side) */}
+        <div className="mt-6 grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={loading}
+            className="w-full rounded-xl bg-slate-100 py-2.5 px-4 text-sm font-semibold text-slate-700 hover:bg-slate-200 transition cursor-pointer disabled:opacity-50"
+          >
             Cancel
-          </Button>
-          <Button variant={variant} onClick={onConfirm} loading={loading}>
-            {confirmLabel}
-          </Button>
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            className={cn(
+              "w-full rounded-xl py-2.5 px-4 text-sm font-semibold text-white shadow-sm transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2",
+              variant === "danger"
+                ? "bg-rose-600 hover:bg-rose-700 active:bg-rose-800"
+                : "bg-brand hover:bg-brand-hover active:bg-brand-active"
+            )}
+          >
+            {loading ? (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            ) : null}
+            <span>{confirmLabel}</span>
+          </button>
         </div>
       </div>
     </div>,

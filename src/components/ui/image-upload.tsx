@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { ImagePlus, X, Loader2, ImageOff, UploadCloud } from "lucide-react";
 import { useToast } from "./toast";
+import { DEFAULT_FOLDER_DIMENSIONS, resizeImageToTarget } from "@/lib/image-utils";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
@@ -17,6 +18,7 @@ export interface ImageUploadProps {
   hint?: string;
   error?: string;
   className?: string;
+  targetDimensions?: { width: number; height: number };
 }
 
 export function ImageUpload({
@@ -29,12 +31,22 @@ export function ImageUpload({
   hint,
   error,
   className = "",
+  targetDimensions,
 }: ImageUploadProps) {
   const toast = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [statusText, setStatusText] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
+
+  const folderConfig = folder ? DEFAULT_FOLDER_DIMENSIONS[folder] : undefined;
+  const dims = targetDimensions ?? (folderConfig ? { width: folderConfig.width, height: folderConfig.height } : undefined);
+  const effectiveBadge = badge ?? folderConfig?.badge ?? (dims ? `${dims.width} × ${dims.height} px` : undefined);
+  const effectiveHint =
+    hint ??
+    folderConfig?.hint ??
+    (dims ? `Auto-fitted to ${dims.width} × ${dims.height} px • Max 15MB` : "JPEG, PNG, WEBP, or GIF up to 5MB");
 
   const [prevValue, setPrevValue] = useState(value);
   if (value !== prevValue) {
@@ -60,20 +72,41 @@ export function ImageUpload({
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("File is too large. Maximum size is 5MB.");
+    const maxInitialSize = dims ? 15 * 1024 * 1024 : 5 * 1024 * 1024;
+    if (file.size > maxInitialSize) {
+      toast.error(`File is too large. Maximum size is ${dims ? "15MB" : "5MB"}.`);
       if (inputRef.current) inputRef.current.value = "";
       return;
     }
 
     setLoadFailed(false);
-    const localPreview = URL.createObjectURL(file);
-    setPreviewUrl(localPreview);
     setUploading(true);
+    setStatusText(dims ? `Fitting to ${dims.width} × ${dims.height}...` : "Preparing image...");
+
+    let fileToUpload = file;
+    if (dims) {
+      try {
+        fileToUpload = await resizeImageToTarget(file, dims.width, dims.height);
+      } catch (err) {
+        console.warn("Image resizing failed, proceeding with original:", err);
+      }
+    }
+
+    if (fileToUpload.size > 5 * 1024 * 1024) {
+      toast.error("Processed file is too large (exceeds 5MB). Please choose a smaller image.");
+      setUploading(false);
+      setStatusText(null);
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
+
+    const localPreview = URL.createObjectURL(fileToUpload);
+    setPreviewUrl(localPreview);
+    setStatusText("Uploading to cloud...");
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", fileToUpload);
       formData.append("folder", folder);
 
       const res = await fetch("/api/uploads", { method: "POST", body: formData });
@@ -84,13 +117,18 @@ export function ImageUpload({
       }
 
       onChange(json.data.url);
-      toast.success("Image uploaded successfully");
+      toast.success(
+        dims
+          ? `Image uploaded & fitted to ${dims.width} × ${dims.height} px`
+          : "Image uploaded successfully"
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed. Please try again.");
       setPreviewUrl(null);
       onChange("");
     } finally {
       setUploading(false);
+      setStatusText(null);
       if (inputRef.current) inputRef.current.value = "";
     }
   }
@@ -109,7 +147,11 @@ export function ImageUpload({
           <label className={`text-sm font-semibold ${error ? "text-rose-600" : "text-slate-800"}`}>
             {label} {required && <span className="text-rose-500 font-bold">*</span>}
           </label>
-          {badge && <span className="text-xs font-medium text-slate-400">{badge}</span>}
+          {effectiveBadge && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-600/15">
+              {effectiveBadge}
+            </span>
+          )}
         </div>
       )}
 
@@ -118,17 +160,26 @@ export function ImageUpload({
           <Image
             src={displayUrl}
             alt="Preview"
-            width={400}
-            height={300}
+            width={dims?.width || 400}
+            height={dims?.height || 300}
             unoptimized
-            className="max-h-72 w-auto max-w-full rounded-xl object-contain block transition-all"
+            className={`w-auto max-w-full rounded-xl object-contain block transition-all ${
+              dims && dims.height > dims.width ? "max-h-80" : "max-h-72"
+            }`}
             onError={() => setLoadFailed(true)}
           />
+
+          {effectiveBadge && !uploading && (
+            <div className="absolute bottom-3 left-3 z-10 flex items-center gap-1.5 rounded-md bg-slate-900/80 backdrop-blur-xs px-2.5 py-1 text-[11px] font-medium text-white shadow-sm">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              <span>{effectiveBadge}</span>
+            </div>
+          )}
 
           {uploading && (
             <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-slate-950/60 backdrop-blur-xs rounded-2xl text-white">
               <Loader2 className="h-6 w-6 animate-spin text-white" />
-              <span className="text-xs font-medium">Uploading image...</span>
+              <span className="text-xs font-medium">{statusText || "Uploading image..."}</span>
             </div>
           )}
 
@@ -181,7 +232,7 @@ export function ImageUpload({
                 Image failed to load — click to replace
               </span>
               <span className="text-xs text-slate-400">
-                JPEG, PNG, WEBP, or GIF up to 5MB
+                {effectiveHint}
               </span>
               <div className="mt-2 flex items-center gap-2">
                 <button
@@ -214,7 +265,7 @@ export function ImageUpload({
               <p className="text-xs sm:text-sm text-slate-700">
                 <span className="font-semibold text-slate-900">Click to browse</span> or drag and drop
               </p>
-              {hint && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
+              {effectiveHint && <p className="mt-1 text-xs text-slate-400">{effectiveHint}</p>}
             </div>
           )}
         </div>

@@ -109,4 +109,8 @@ const OrderSchema = new Schema<IOrder>(
 
 OrderSchema.index({ orderNumber: "text", "customerSnapshot.name": "text", "customerSnapshot.email": "text" });
 
+if (mongoose.models.Order) {
+  delete mongoose.models.Order;
+}
+
 export const Order: Model<IOrder> = mongoose.models.Order || mongoose.model<IOrder>("Order", OrderSchema);

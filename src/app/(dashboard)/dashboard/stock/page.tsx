@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Boxes, AlertTriangle, XCircle, PackageCheck, SlidersHorizontal } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Boxes, AlertTriangle, XCircle, PackageCheck, SlidersHorizontal, ChevronDown, Check, X } from "lucide-react";
 import { Button, Badge, Card, StatCard, Select, Input, Textarea } from "@/components/ui/primitives";
 import { DataTable, type Column, Pagination, SearchInput } from "@/components/ui/table";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
-import { formatDateTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { STOCK_LOG_TYPES } from "@/lib/constants";
 
 interface StockProduct {
@@ -17,6 +17,12 @@ interface StockProduct {
   lowStockThreshold: number;
   category: { name: string } | null;
 }
+
+const STOCK_FILTER_OPTIONS = [
+  { key: "low", label: "Low stock" },
+  { key: "out", label: "Out of stock" },
+  { key: "in", label: "In stock" },
+] as const;
 
 export default function StockPage() {
   const toast = useToast();
@@ -55,6 +61,7 @@ export default function StockPage() {
   }, [search, stockFilter, page]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 
@@ -80,6 +87,7 @@ export default function StockPage() {
         return;
       }
       toast.success("Stock updated successfully");
+      window.dispatchEvent(new Event("notifications-updated"));
       setAdjustTarget(null);
       load();
     } finally {
@@ -141,22 +149,39 @@ export default function StockPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <SearchInput className="flex-1 w-full" value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Search by name or SKU..." />
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-            {[
-              { key: "", label: "All" },
-              { key: "low", label: "Low stock" },
-              { key: "out", label: "Out of stock" },
-              { key: "in", label: "In stock" },
-            ].map((opt) => (
-              <button
-                key={opt.key}
-                onClick={() => { setStockFilter(opt.key); setPage(1); }}
-                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                  stockFilter === opt.key ? "bg-brand text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}
+            <div className="relative">
+              <select
+                value={stockFilter}
+                onChange={(e) => {
+                  setStockFilter(e.target.value);
+                  setPage(1);
+                }}
+                className="appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-3.5 pr-8 text-xs font-medium text-slate-700 outline-none focus:border-brand focus:ring-1 focus:ring-brand shadow-xs transition cursor-pointer hover:border-slate-300"
               >
-                {opt.label}
+                <option value="">All statuses</option>
+                {STOCK_FILTER_OPTIONS.map((opt) => (
+                  <option key={opt.key} value={opt.key}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            </div>
+
+            {stockFilter && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStockFilter("");
+                  setPage(1);
+                }}
+                className="flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 cursor-pointer transition shadow-xs"
+                title="Reset stock filter"
+              >
+                <X className="h-3.5 w-3.5 text-slate-400" />
+                <span>Reset</span>
               </button>
-            ))}
+            )}
           </div>
         </div>
       </Card>

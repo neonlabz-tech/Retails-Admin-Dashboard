@@ -28,9 +28,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const { id } = await params;
     const body = await request.json();
     const data = customerStatusSchema.parse(body);
-    const customer = await Customer.findByIdAndUpdate(id, { isActive: data.isActive }, { new: true });
+
+    const update: Record<string, boolean> = {};
+    if (data.isActive !== undefined) update.isActive = data.isActive;
+    if (data.isVerified !== undefined) update.isVerified = data.isVerified;
+
+    const customer = await Customer.findByIdAndUpdate(id, update, { new: true });
     if (!customer) return apiError("Customer not found", 404);
-    return apiSuccess(customer, `Customer ${data.isActive ? "activated" : "deactivated"} successfully`);
+    return apiSuccess(customer, "Customer updated successfully");
   } catch (err) {
     return handleApiError(err);
   }

@@ -393,6 +393,9 @@ export default function CategoriesPage() {
               clearFieldError("image");
             }}
             folder="categories"
+            targetDimensions={{ width: 750, height: 750 }}
+            badge="750 × 750 px"
+            hint="Auto-fitted to 750 × 750 px (1:1 Square) • Max 15MB"
           />
 
           <div className="border-t border-slate-100 pt-4 flex items-center justify-between">

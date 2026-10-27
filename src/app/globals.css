@@ -69,9 +69,14 @@ body {
   animation: modal-in 0.15s ease-out;
 }
 
+@utility metric-card-gradient {
+  background: linear-gradient(135deg, #e1ecfa 0%, #d4e4f7 100%) !important;
+  border: 1px solid rgba(15, 30, 65, 0.35) !important;
+}
+
 .metric-card-gradient {
-  background: linear-gradient(135deg, #e1ecfa 0%, #d4e4f7 100%);
-  border: 1px solid rgba(15, 30, 65, 0.35);
+  background: linear-gradient(135deg, #e1ecfa 0%, #d4e4f7 100%) !important;
+  border: 1px solid rgba(15, 30, 65, 0.35) !important;
 }
 
 /* --------------------------------- Print Styles --------------------------------- */

@@ -8,13 +8,12 @@ import {
   Package,
   Calendar,
   Layers,
-  TrendingUp,
   BarChart2,
-  DollarSign,
   Loader2,
   FilterX,
 } from "lucide-react";
 import { formatCurrency, cn } from "@/lib/utils";
+import { Tooltip } from "@/components/ui/tooltip";
 
 interface ItemSalesRecord {
   _id: string;
@@ -37,8 +36,11 @@ type MetricType = "units" | "revenue";
 
 export function ItemSalesCard() {
   const [dateOption, setDateOption] = useState<DateRangeOption>("14");
-  const [customStart, setCustomStart] = useState("");
-  const [customEnd, setCustomEnd] = useState("");
+  const [customStart, setCustomStart] = useState(() => {
+    const past = new Date(Date.now() - 13 * 24 * 60 * 60 * 1000);
+    return past.toISOString().split("T")[0];
+  });
+  const [customEnd, setCustomEnd] = useState(() => new Date().toISOString().split("T")[0]);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [metric, setMetric] = useState<MetricType>("units");
@@ -46,14 +48,6 @@ export function ItemSalesCard() {
   const [items, setItems] = useState<ItemSalesRecord[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Initialize custom dates with today and 14 days ago
-  useEffect(() => {
-    const today = new Date();
-    const past = new Date(Date.now() - 13 * 24 * 60 * 60 * 1000);
-    setCustomEnd(today.toISOString().split("T")[0]);
-    setCustomStart(past.toISOString().split("T")[0]);
-  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -158,7 +152,7 @@ export function ItemSalesCard() {
                   : "text-slate-600 hover:text-slate-900"
               )}
             >
-              <DollarSign className="h-3.5 w-3.5" />
+              <span className="text-[11px] font-bold">LKR</span>
               Revenue
             </button>
           </div>
@@ -241,7 +235,7 @@ export function ItemSalesCard() {
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-3.5 pr-8 text-xs font-medium text-slate-700 outline-none focus:border-[#093B84] focus:ring-1 focus:ring-[#093B84] transition"
+              className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2 pl-3.5 pr-8 text-xs font-medium text-slate-700 outline-none focus:border-[#093B84] focus:ring-1 focus:ring-[#093B84] shadow-xs transition cursor-pointer hover:border-slate-300"
             >
               <option value="all">All Categories</option>
               {categories.map((c) => (
@@ -316,10 +310,12 @@ export function ItemSalesCard() {
                           )}
                         </div>
 
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-semibold text-slate-900 leading-tight">
-                            {item.name}
-                          </p>
+                        <div className="min-w-0 flex-1">
+                          <Tooltip content={item.name}>
+                            <p className="truncate text-xs font-semibold text-slate-900 leading-tight hover:text-[#093B84] transition-colors cursor-default">
+                              {item.name}
+                            </p>
+                          </Tooltip>
                           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-400">
                             {item.sku && <span>{item.sku}</span>}
                             {item.categoryName && (
