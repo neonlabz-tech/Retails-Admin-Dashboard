@@ -66,7 +66,6 @@ const emptyForm = {
   price: "",
   salePrice: "",
   sku: "",
-  weight: "",
   images: [] as string[],
   specifications: [{ key: "", value: "" }] as Specification[],
   tags: "",
@@ -197,7 +196,6 @@ export default function ProductsPage() {
       price: String(product.price),
       salePrice: product.salePrice ? String(product.salePrice) : "",
       sku: product.sku,
-      weight: product.weight !== undefined && product.weight !== null ? String(product.weight) : "",
       images: Array.isArray(product.images) ? product.images : [],
       specifications:
         product.specifications && product.specifications.length > 0
@@ -232,11 +230,6 @@ export default function ProductsPage() {
     if (form.salePrice.trim() !== "" && (isNaN(Number(form.salePrice)) || Number(form.salePrice) < 0)) {
       errs.salePrice = "Sale price must be a positive number";
     }
-    if (!form.weight.trim()) {
-      errs.weight = "Weight is required";
-    } else if (isNaN(Number(form.weight)) || Number(form.weight) < 0) {
-      errs.weight = "Weight must be 0 or more";
-    }
     if (!form.stock.trim()) {
       errs.stock = "Stock quantity is required";
     } else if (isNaN(Number(form.stock)) || Number(form.stock) < 0) {
@@ -263,7 +256,6 @@ export default function ProductsPage() {
         price: Number(form.price),
         salePrice: form.salePrice ? Number(form.salePrice) : null,
         sku: form.sku.trim(),
-        weight: Number(form.weight),
         images: form.images && form.images.length > 0 ? form.images.slice(0, 5) : [],
         specifications: form.specifications.filter((s) => s.key.trim() && s.value.trim()),
         tags: form.tags
@@ -369,15 +361,6 @@ export default function ProductsPage() {
       },
       { header: "Category", key: "category", render: (p) => p.category?.name || "-" },
       { header: "Subcategory", key: "subcategory", render: (p) => p.subcategory || "-" },
-      {
-        header: "Weight",
-        key: "weight",
-        render: (p) => (
-          <span className="font-medium text-slate-700">
-            {p.weight !== undefined && p.weight !== null ? `${p.weight} g` : "-"}
-          </span>
-        ),
-      },
       {
         header: "Price",
         key: "price",
@@ -808,7 +791,7 @@ export default function ProductsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
               <div className="mb-1.5 flex items-center justify-between">
                 <label className={cn("text-sm font-semibold", fieldErrors.price ? "text-rose-600" : "text-slate-800")}>
@@ -871,36 +854,7 @@ export default function ProductsPage() {
               )}
             </div>
 
-            <div>
-              <div className="mb-1.5 flex items-center justify-between">
-                <label className={cn("text-sm font-semibold", fieldErrors.weight ? "text-rose-600" : "text-slate-800")}>
-                  Weight (g) <span className="text-rose-500 font-bold">*</span>
-                </label>
-              </div>
-              <input
-                type="number"
-                min="0"
-                step="any"
-                required
-                value={form.weight}
-                onChange={(e) => {
-                  setForm((f) => ({ ...f, weight: e.target.value }));
-                  clearFieldError("weight");
-                }}
-                placeholder="e.g. 500"
-                className={cn(
-                  "w-full rounded-xl border bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition shadow-xs",
-                  fieldErrors.weight
-                    ? "border-rose-400 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 bg-rose-50/20"
-                    : "border-slate-200 focus:border-brand focus:ring-1 focus:ring-brand"
-                )}
-              />
-              {fieldErrors.weight && (
-                <p className="mt-1.5 text-xs font-medium text-rose-500">
-                  {fieldErrors.weight}
-                </p>
-              )}
-            </div>
+
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
