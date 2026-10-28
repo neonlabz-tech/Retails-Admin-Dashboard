@@ -93,25 +93,64 @@ export async function POST(request: NextRequest) {
 
     let subtotal = 0;
     const items: IOrderItem[] = [];
-    const productsToUpdate: Array<{ product: IProduct; quantity: number }> = [];
+    const productsToUpdate: Array<{ product: IProduct; quantity: number; variantName?: string }> = [];
+
     for (const item of data.items) {
       const product = await Product.findById(item.productId);
       if (!product) return apiError(`Product not found: ${item.productId}`, 404);
-      if (product.stock < item.quantity) {
-        return apiError(`Insufficient stock for ${product.name}. Available: ${product.stock}`, 400);
+
+      let unitPrice =
+        product.salePrice !== undefined && product.salePrice !== null && product.salePrice > 0
+          ? product.salePrice
+          : product.price;
+      let itemSku = product.sku;
+      let matchedVariant: any = null;
+
+      if (item.variantName && Array.isArray(product.variants) && product.variants.length > 0) {
+        matchedVariant = product.variants.find(
+          (v) => v.name.trim().toLowerCase() === item.variantName.trim().toLowerCase()
+        );
       }
-      const lineSubtotal = (product.salePrice ?? product.price) * item.quantity;
+
+      if (matchedVariant) {
+        if (matchedVariant.stock < item.quantity) {
+          return apiError(
+            `Insufficient stock for ${product.name} (${matchedVariant.name}). Available: ${matchedVariant.stock}`,
+            400
+          );
+        }
+        unitPrice =
+          matchedVariant.salePrice !== undefined &&
+          matchedVariant.salePrice !== null &&
+          matchedVariant.salePrice > 0
+            ? matchedVariant.salePrice
+            : matchedVariant.price;
+        itemSku = matchedVariant.sku || product.sku;
+      } else {
+        if (product.stock < item.quantity) {
+          return apiError(`Insufficient stock for ${product.name}. Available: ${product.stock}`, 400);
+        }
+      }
+
+      const lineSubtotal = unitPrice * item.quantity;
       subtotal += lineSubtotal;
+
       items.push({
         product: product._id,
         name: product.name,
+        variantName: matchedVariant ? matchedVariant.name : "",
         image: product.images?.[0] || "",
-        sku: product.sku,
-        price: product.salePrice ?? product.price,
+        sku: itemSku,
+        price: unitPrice,
         quantity: item.quantity,
         subtotal: lineSubtotal,
       });
-      productsToUpdate.push({ product, quantity: item.quantity });
+
+      productsToUpdate.push({
+        product,
+        quantity: item.quantity,
+        variantName: matchedVariant ? matchedVariant.name : undefined,
+      });
     }
 
     const total = subtotal - data.discount + data.shippingFee + data.tax;
@@ -160,8 +199,16 @@ export async function POST(request: NextRequest) {
     });
     await order.validate();
 
-    for (const { product, quantity } of productsToUpdate) {
-      product.stock -= quantity;
+    for (const { product, quantity, variantName } of productsToUpdate) {
+      if (variantName && Array.isArray(product.variants)) {
+        const v = product.variants.find(
+          (varItem) => varItem.name.trim().toLowerCase() === variantName.trim().toLowerCase()
+        );
+        if (v) {
+          v.stock = Math.max(0, v.stock - quantity);
+        }
+      }
+      product.stock = Math.max(0, product.stock - quantity);
       product.totalSold = (product.totalSold || 0) + quantity;
       await product.save();
       if (product.stock <= product.lowStockThreshold) {
@@ -209,7 +256,7 @@ export async function POST(request: NextRequest) {
       },
       shippingAddress: order.shippingAddress,
       items: order.items?.map((it) => ({
-        name: it.name,
+        name: it.variantName ? `${it.name} (${it.variantName})` : it.name,
         quantity: it.quantity,
         price: it.price,
       })),

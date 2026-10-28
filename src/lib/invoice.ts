@@ -20,6 +20,7 @@ export interface InvoiceOrderData {
   billingAddress?: Record<string, string>;
   items: Array<{
     name: string;
+    variantName?: string;
     sku?: string;
     price: number;
     quantity: number;
@@ -81,6 +82,7 @@ export function generateInvoiceHtml(order: InvoiceOrderData, storeName = "RKF Re
           <td style="padding: 10px 12px; color: #64748b; text-align: center;">${idx + 1}</td>
           <td style="padding: 10px 12px;">
             <div style="font-weight: 600; color: #0f172a;">${escapeHtml(item.name)}</div>
+            ${item.variantName ? `<div style="display: inline-block; font-size: 11px; font-weight: 600; color: #4338ca; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 4px; padding: 1px 6px; margin-top: 3px;">Variant: ${escapeHtml(item.variantName)}</div>` : ""}
             ${item.sku ? `<div style="font-size: 11px; font-family: monospace; color: #64748b; margin-top: 2px;">SKU: ${escapeHtml(item.sku)}</div>` : ""}
           </td>
           <td style="padding: 10px 12px; text-align: right; color: #334155;">${escapeHtml(formatCurrency(item.price))}</td>

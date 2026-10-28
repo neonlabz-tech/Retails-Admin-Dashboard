@@ -38,6 +38,14 @@ interface Specification {
   value: string;
 }
 
+interface ProductVariant {
+  name: string;
+  price: string;
+  salePrice: string;
+  stock: string;
+  lowStockThreshold: string;
+}
+
 interface ProductRow {
   _id: string;
   name: string;
@@ -54,6 +62,7 @@ interface ProductRow {
   images: string[];
   tags?: string[];
   description?: string;
+  variants?: { name: string; price: number; salePrice?: number | null; stock: number; lowStockThreshold?: number }[];
   specifications: Specification[];
   createdAt: string;
 }
@@ -73,6 +82,7 @@ const emptyForm = {
   lowStockThreshold: "",
   status: "" as "active" | "draft" | "archived" | "",
   isFeatured: false,
+  variants: [] as ProductVariant[],
 };
 
 export default function ProductsPage() {
@@ -194,7 +204,10 @@ export default function ProductsPage() {
       category: product.category?._id || "",
       subcategory: product.subcategory || "",
       price: String(product.price),
-      salePrice: product.salePrice ? String(product.salePrice) : "",
+      salePrice:
+        product.salePrice !== undefined && product.salePrice !== null
+          ? String(product.salePrice)
+          : "",
       sku: product.sku,
       images: Array.isArray(product.images) ? product.images : [],
       specifications:
@@ -206,6 +219,22 @@ export default function ProductsPage() {
       lowStockThreshold: String(product.lowStockThreshold),
       status: product.status,
       isFeatured: product.isFeatured,
+      variants:
+        Array.isArray(product.variants) && product.variants.length > 0
+          ? product.variants.map((v) => ({
+              name: v.name || "",
+              price: v.price !== undefined && v.price !== null ? String(v.price) : "",
+              salePrice:
+                v.salePrice !== undefined && v.salePrice !== null
+                  ? String(v.salePrice)
+                  : "",
+              stock: v.stock !== undefined && v.stock !== null ? String(v.stock) : "",
+              lowStockThreshold:
+                v.lowStockThreshold !== undefined && v.lowStockThreshold !== null
+                  ? String(v.lowStockThreshold)
+                  : "5",
+            }))
+          : [],
     });
     setModalOpen(true);
   }
@@ -222,23 +251,55 @@ export default function ProductsPage() {
     if (!form.category) errs.category = "Category is required";
     if (!form.status) errs.status = "Status is required";
 
-    if (!form.price.trim()) {
-      errs.price = "Price is required";
-    } else if (isNaN(Number(form.price)) || Number(form.price) <= 0) {
-      errs.price = "Price must be greater than 0";
+    const hasVariants = form.variants.length > 0;
+
+    for (let i = 0; i < form.variants.length; i++) {
+      const v = form.variants[i];
+      if (!v.name.trim()) {
+        toast.error(`Variant #${i + 1} requires a name/type (e.g. Red, XL, 500ml)`);
+        return;
+      }
+      if (v.price === "" || isNaN(Number(v.price)) || Number(v.price) < 0) {
+        toast.error(`Variant "${v.name}" requires a valid price`);
+        return;
+      }
+      if (v.salePrice.trim() !== "" && (isNaN(Number(v.salePrice)) || Number(v.salePrice) < 0)) {
+        toast.error(`Variant "${v.name}" sale price must be a positive number`);
+        return;
+      }
+      if (v.stock === "" || isNaN(Number(v.stock)) || Number(v.stock) < 0) {
+        toast.error(`Variant "${v.name}" requires a valid stock quantity`);
+        return;
+      }
+      if (v.lowStockThreshold.trim() !== "" && (isNaN(Number(v.lowStockThreshold)) || Number(v.lowStockThreshold) < 0)) {
+        toast.error(`Variant "${v.name}" low alert must be 0 or more`);
+        return;
+      }
     }
-    if (form.salePrice.trim() !== "" && (isNaN(Number(form.salePrice)) || Number(form.salePrice) < 0)) {
-      errs.salePrice = "Sale price must be a positive number";
-    }
-    if (!form.stock.trim()) {
-      errs.stock = "Stock quantity is required";
-    } else if (isNaN(Number(form.stock)) || Number(form.stock) < 0) {
-      errs.stock = "Stock quantity must be 0 or more";
-    }
-    if (!form.lowStockThreshold.trim()) {
-      errs.lowStockThreshold = "Low alert threshold is required";
-    } else if (isNaN(Number(form.lowStockThreshold)) || Number(form.lowStockThreshold) < 0) {
-      errs.lowStockThreshold = "Low alert threshold must be 0 or more";
+
+    if (!hasVariants) {
+      if (!form.price.trim()) {
+        errs.price = "Price is required";
+      } else if (isNaN(Number(form.price)) || Number(form.price) <= 0) {
+        errs.price = "Price must be greater than 0";
+      }
+      if (!form.stock.trim()) {
+        errs.stock = "Stock quantity is required";
+      } else if (isNaN(Number(form.stock)) || Number(form.stock) < 0) {
+        errs.stock = "Stock quantity must be 0 or more";
+      }
+      if (!form.lowStockThreshold.trim()) {
+        errs.lowStockThreshold = "Low alert threshold is required";
+      } else if (isNaN(Number(form.lowStockThreshold)) || Number(form.lowStockThreshold) < 0) {
+        errs.lowStockThreshold = "Low alert threshold must be 0 or more";
+      }
+    } else {
+      if (form.price.trim() !== "" && (isNaN(Number(form.price)) || Number(form.price) < 0)) {
+        errs.price = "Price must be a positive number";
+      }
+      if (form.stock.trim() !== "" && (isNaN(Number(form.stock)) || Number(form.stock) < 0)) {
+        errs.stock = "Stock quantity must be 0 or more";
+      }
     }
 
     if (Object.keys(errs).length > 0) {
@@ -248,15 +309,41 @@ export default function ProductsPage() {
 
     setSaving(true);
     try {
+      let finalPrice = Number(form.price);
+      let finalStock = Number(form.stock);
+      let finalLowStock = Number(form.lowStockThreshold);
+
+      if (hasVariants) {
+        const variantPrices = form.variants.map((v) => Number(v.price)).filter((p) => !isNaN(p) && p > 0);
+        if (!form.price.trim() && variantPrices.length > 0) {
+          finalPrice = Math.min(...variantPrices);
+        }
+        if (!form.stock.trim()) {
+          finalStock = form.variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+        }
+        if (!form.lowStockThreshold.trim()) {
+          finalLowStock = 5;
+        }
+      }
+
       const payload = {
         name: form.name.trim(),
         description: form.description,
         category: form.category,
         subcategory: form.subcategory.trim(),
-        price: Number(form.price),
-        salePrice: form.salePrice ? Number(form.salePrice) : null,
+        price: finalPrice,
+        salePrice: form.salePrice && form.salePrice.trim() !== "" ? Number(form.salePrice) : null,
         sku: form.sku.trim(),
         images: form.images && form.images.length > 0 ? form.images.slice(0, 5) : [],
+        variants: form.variants
+          .filter((v) => v.name.trim())
+          .map((v) => ({
+            name: v.name.trim(),
+            price: Number(v.price),
+            salePrice: v.salePrice && v.salePrice.trim() !== "" ? Number(v.salePrice) : null,
+            stock: Number(v.stock),
+            lowStockThreshold: v.lowStockThreshold.trim() !== "" ? Number(v.lowStockThreshold) : 5,
+          })),
         specifications: form.specifications.filter((s) => s.key.trim() && s.value.trim()),
         tags: form.tags
           ? form.tags
@@ -264,8 +351,8 @@ export default function ProductsPage() {
               .map((t) => t.trim())
               .filter(Boolean)
           : [],
-        stock: Number(form.stock),
-        lowStockThreshold: Number(form.lowStockThreshold),
+        stock: finalStock,
+        lowStockThreshold: finalLowStock,
         status: form.status,
         isFeatured: form.isFeatured,
       };
@@ -409,6 +496,37 @@ export default function ProductsPage() {
     ],
     []
   );
+
+  function addVariant() {
+    setForm((f) => ({
+      ...f,
+      variants: [
+        ...f.variants,
+        {
+          name: "",
+          price: f.price || "",
+          salePrice: "",
+          stock: f.stock || "",
+          lowStockThreshold: f.lowStockThreshold || "5",
+        },
+      ],
+    }));
+  }
+
+  function removeVariant(index: number) {
+    setForm((f) => ({
+      ...f,
+      variants: f.variants.filter((_, i) => i !== index),
+    }));
+  }
+
+  function updateVariant(index: number, field: keyof ProductVariant, value: string) {
+    setForm((f) => {
+      const next = [...f.variants];
+      next[index] = { ...next[index], [field]: value };
+      return { ...f, variants: next };
+    });
+  }
 
   function updateSpec(idx: number, field: "key" | "value", value: string) {
     setForm((f) => {
@@ -795,14 +913,13 @@ export default function ProductsPage() {
             <div>
               <div className="mb-1.5 flex items-center justify-between">
                 <label className={cn("text-sm font-semibold", fieldErrors.price ? "text-rose-600" : "text-slate-800")}>
-                  Price (LKR) <span className="text-rose-500 font-bold">*</span>
+                  Price (LKR)
                 </label>
               </div>
               <input
                 type="number"
                 min="0"
                 step="1"
-                required
                 value={form.price}
                 onChange={(e) => {
                   setForm((f) => ({ ...f, price: e.target.value }));
@@ -861,13 +978,12 @@ export default function ProductsPage() {
             <div>
               <div className="mb-1.5 flex items-center justify-between">
                 <label className={cn("text-sm font-semibold", fieldErrors.stock ? "text-rose-600" : "text-slate-800")}>
-                  Stock qty <span className="text-rose-500 font-bold">*</span>
+                  Stock qty
                 </label>
               </div>
               <input
                 type="number"
                 min="0"
-                required
                 value={form.stock}
                 onChange={(e) => {
                   setForm((f) => ({ ...f, stock: e.target.value }));
@@ -891,13 +1007,12 @@ export default function ProductsPage() {
             <div>
               <div className="mb-1.5 flex items-center justify-between">
                 <label className={cn("text-sm font-semibold", fieldErrors.lowStockThreshold ? "text-rose-600" : "text-slate-800")}>
-                  Low alert <span className="text-rose-500 font-bold">*</span>
+                  Low alert
                 </label>
               </div>
               <input
                 type="number"
                 min="0"
-                required
                 value={form.lowStockThreshold}
                 onChange={(e) => {
                   setForm((f) => ({ ...f, lowStockThreshold: e.target.value }));
@@ -920,14 +1035,130 @@ export default function ProductsPage() {
           </div>
 
           <div>
+            <div className="mb-2.5 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-semibold text-slate-800">Product Variants</label>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                    Optional
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Add variations like sizes, colors, or volumes with custom prices and stock.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={addVariant}
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition flex items-center gap-1 bg-white border border-indigo-200 hover:border-indigo-300 rounded-lg px-2.5 py-1.5 shadow-xs shrink-0"
+              >
+                <Plus className="h-3.5 w-3.5" /> Add Variant
+              </button>
+            </div>
+
+            {form.variants.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-200 bg-white/60 p-3 text-center text-xs text-slate-400">
+                No variants added. This product uses the single base price &amp; stock above.
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <div className="hidden sm:grid sm:grid-cols-12 gap-2 px-1 text-xs font-semibold text-slate-600">
+                  <div className="sm:col-span-3">Variant Type / Name</div>
+                  <div className="sm:col-span-2">Price (LKR)</div>
+                  <div className="sm:col-span-2">Sale Price (LKR)</div>
+                  <div className="sm:col-span-2">Stock Qty</div>
+                  <div className="sm:col-span-2">Low Alert</div>
+                  <div className="sm:col-span-1 text-center">Action</div>
+                </div>
+
+                {form.variants.map((v, idx) => (
+                  <div
+                    key={idx}
+                    className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center bg-white p-2 sm:p-2.5 rounded-xl border border-slate-200 shadow-xs"
+                  >
+                    <div className="sm:col-span-3">
+                      <span className="text-[11px] font-medium text-slate-400 sm:hidden block mb-1">Variant Type / Name</span>
+                      <input
+                        type="text"
+                        placeholder="e.g. Red, XL, 500ml"
+                        value={v.name}
+                        onChange={(e) => updateVariant(idx, "name", e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-brand focus:ring-1 focus:ring-brand transition"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <span className="text-[11px] font-medium text-slate-400 sm:hidden block mb-1">Price (LKR)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        placeholder="Price"
+                        value={v.price}
+                        onChange={(e) => updateVariant(idx, "price", e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-brand focus:ring-1 focus:ring-brand transition"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <span className="text-[11px] font-medium text-slate-400 sm:hidden block mb-1">Sale Price (LKR)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        placeholder="Sale (opt)"
+                        value={v.salePrice}
+                        onChange={(e) => updateVariant(idx, "salePrice", e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-brand focus:ring-1 focus:ring-brand transition"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <span className="text-[11px] font-medium text-slate-400 sm:hidden block mb-1">Stock Qty</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        placeholder="Stock"
+                        value={v.stock}
+                        onChange={(e) => updateVariant(idx, "stock", e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-brand focus:ring-1 focus:ring-brand transition"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <span className="text-[11px] font-medium text-slate-400 sm:hidden block mb-1">Low Alert</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        placeholder="Alert (5)"
+                        value={v.lowStockThreshold}
+                        onChange={(e) => updateVariant(idx, "lowStockThreshold", e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-brand focus:ring-1 focus:ring-brand transition"
+                      />
+                    </div>
+                    <div className="sm:col-span-1 flex justify-end sm:justify-center">
+                      <button
+                        type="button"
+                        onClick={() => removeVariant(idx)}
+                        className="rounded-lg p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition"
+                        title="Remove variant"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
             <div className="mb-2 flex items-center justify-between">
               <label className="text-sm font-semibold text-slate-800">Specifications</label>
               <button
                 type="button"
                 onClick={() => setForm((f) => ({ ...f, specifications: [...f.specifications, { key: "", value: "" }] }))}
-                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition flex items-center gap-1"
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition flex items-center gap-1 bg-white border border-indigo-200 hover:border-indigo-300 rounded-lg px-2.5 py-1.5 shadow-xs shrink-0"
               >
-                + Add spec
+                <Plus className="h-3.5 w-3.5" /> Add spec
               </button>
             </div>
             <div className="flex flex-col gap-2.5">

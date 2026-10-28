@@ -39,6 +39,7 @@ interface OrderRow {
   customerSnapshot: { name: string; email: string; phone?: string };
   items: Array<{
     name: string;
+    variantName?: string;
     image?: string;
     sku?: string;
     price: number;
@@ -1040,9 +1041,16 @@ function OrdersContent() {
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <h4 className="text-xs sm:text-sm font-semibold text-slate-900 truncate">
-                              {item.name}
-                            </h4>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="text-xs sm:text-sm font-semibold text-slate-900 truncate">
+                                {item.name}
+                              </h4>
+                              {item.variantName ? (
+                                <span className="inline-flex items-center rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 border border-indigo-200/60">
+                                  Variant: {item.variantName}
+                                </span>
+                              ) : null}
+                            </div>
                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                               <span className="font-mono text-[11px] text-slate-500">
                                 SKU: {item.sku || "N/A"}
