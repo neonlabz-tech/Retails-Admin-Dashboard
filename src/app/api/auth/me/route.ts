@@ -95,6 +95,7 @@ export async function PATCH(request: NextRequest) {
         email: admin.email,
         name: admin.name,
         role: admin.role,
+        avatar: admin.avatar,
       });
       response.cookies.set(sessionCookieOptions.name, token, sessionCookieOptions);
     }

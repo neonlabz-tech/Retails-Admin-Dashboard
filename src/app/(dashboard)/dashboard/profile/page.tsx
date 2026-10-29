@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Save, KeyRound, UserCircle, Mail } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Save, KeyRound, UserCircle, Mail, Pencil, X } from "lucide-react";
 import { Button, Card, Input, LoadingState, Badge } from "@/components/ui/primitives";
 import { ImageUploader } from "@/components/ui/image-uploader";
 import { useToast } from "@/components/ui/toast";
 import { ROLE_LABELS, type AdminRole } from "@/lib/constants";
 import { formatDateTime } from "@/lib/utils";
+import { validateName } from "@/lib/validators";
 
 interface AdminProfile {
   id: string;
@@ -19,11 +21,15 @@ interface AdminProfile {
 }
 
 export default function ProfilePage() {
+  const router = useRouter();
   const toast = useToast();
   const [profile, setProfile] = useState<AdminProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sendingReset, setSendingReset] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [nameInput, setNameInput] = useState("");
+  const [nameError, setNameError] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -31,7 +37,10 @@ export default function ProfilePage() {
       try {
         const res = await fetch("/api/auth/me");
         const json = await res.json();
-        if (json.success) setProfile(json.data);
+        if (json.success) {
+          setProfile(json.data);
+          setNameInput(json.data.name || "");
+        }
       } finally {
         setLoading(false);
       }
@@ -39,14 +48,32 @@ export default function ProfilePage() {
     load();
   }, []);
 
+  function handleStartEdit() {
+    setNameInput(profile?.name || "");
+    setNameError("");
+    setIsEditing(true);
+  }
+
+  function handleCancelEdit() {
+    setNameInput(profile?.name || "");
+    setNameError("");
+    setIsEditing(false);
+  }
+
   async function handleSaveProfile() {
     if (!profile) return;
+    const err = validateName(nameInput);
+    if (err) {
+      setNameError(err);
+      return;
+    }
+    setNameError("");
     setSaving(true);
     try {
       const res = await fetch("/api/auth/me", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: profile.name, email: profile.email, avatar: profile.avatar }),
+        body: JSON.stringify({ name: nameInput.trim() }),
       });
       const json = await res.json();
       if (!res.ok || !json.success) {
@@ -54,6 +81,15 @@ export default function ProfilePage() {
         return;
       }
       toast.success("Profile updated successfully");
+      const updatedName = nameInput.trim();
+      setProfile({ ...profile, name: updatedName });
+      setIsEditing(false);
+      window.dispatchEvent(
+        new CustomEvent("admin-profile-updated", {
+          detail: { avatar: profile.avatar, name: updatedName },
+        })
+      );
+      router.refresh();
     } finally {
       setSaving(false);
     }
@@ -94,9 +130,36 @@ export default function ProfilePage() {
       </div>
 
       <Card className="p-6">
-        <div className="flex flex-col items-center gap-4 border-b border-slate-100 pb-6 sm:flex-row">
-          <ImageUploader images={profile.avatar ? [profile.avatar] : []} onChange={(images) => setProfile({ ...profile, avatar: images[0] || "" })} folder="avatars" max={1} />
-          <div className="flex-1 text-center sm:text-left">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-6 border-b border-slate-100 pb-6">
+          <ImageUploader
+            variant="avatar"
+            label="Profile Image"
+            images={profile.avatar ? [profile.avatar] : []}
+            onChange={async (images) => {
+              const newAvatar = images[0] || "";
+              setProfile((prev) => (prev ? { ...prev, avatar: newAvatar } : null));
+              window.dispatchEvent(
+                new CustomEvent("admin-profile-updated", {
+                  detail: { avatar: newAvatar, name: profile.name },
+                })
+              );
+              try {
+                const res = await fetch("/api/auth/me", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ avatar: newAvatar }),
+                });
+                if (res.ok) {
+                  router.refresh();
+                }
+              } catch (err) {
+                console.error("Auto-sync avatar failed:", err);
+              }
+            }}
+            folder="avatars"
+            max={1}
+          />
+          <div className="flex-1 text-center sm:text-left sm:pl-6 sm:border-l sm:border-slate-100">
             <p className="text-lg font-semibold text-slate-900">{profile.name}</p>
             <p className="text-sm text-slate-500">{profile.email}</p>
             <div className="mt-2 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
@@ -107,17 +170,66 @@ export default function ProfilePage() {
         </div>
 
         <div className="mt-6 flex flex-col gap-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-            <UserCircle className="h-4 w-4" /> Personal Information
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+              <UserCircle className="h-4 w-4 text-slate-600" />
+              <span>Personal Information</span>
+            </div>
+            {isEditing ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCancelEdit}
+                  disabled={saving}
+                  className="cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" /> Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleSaveProfile}
+                  loading={saving}
+                  className="cursor-pointer"
+                >
+                  <Save className="h-3.5 w-3.5" /> Save changes
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleStartEdit}
+                className="cursor-pointer"
+              >
+                <Pencil className="h-3.5 w-3.5 text-slate-500" /> Edit
+              </Button>
+            )}
           </div>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Input label="Full name" value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
-            <Input label="Email address" type="email" value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} />
-          </div>
-          <div>
-            <Button onClick={handleSaveProfile} loading={saving}>
-              <Save className="h-4 w-4" /> Save changes
-            </Button>
+            <Input
+              label="Full name"
+              value={isEditing ? nameInput : profile.name}
+              onChange={(e) => {
+                setNameInput(e.target.value);
+                if (nameError) setNameError("");
+              }}
+              disabled={!isEditing}
+              error={nameError}
+              className={!isEditing ? "bg-slate-50/70 border-slate-200 text-slate-700 cursor-default select-all" : ""}
+            />
+            <Input
+              label="Email address"
+              type="email"
+              value={profile.email}
+              disabled
+              hint="Email address cannot be changed"
+              className="bg-slate-50/70 border-slate-200 text-slate-500 cursor-not-allowed"
+            />
           </div>
         </div>
       </Card>

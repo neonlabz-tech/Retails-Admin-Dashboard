@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
       email: admin.email,
       name: admin.name,
       role: admin.role,
+      avatar: admin.avatar,
     });
 
     const response = NextResponse.json({
