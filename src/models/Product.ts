@@ -6,6 +6,15 @@ export interface ISpecification {
   value: string;
 }
 
+export interface IVariant {
+  name: string;
+  price: number;
+  salePrice?: number | null;
+  stock: number;
+  lowStockThreshold?: number;
+  sku?: string;
+}
+
 export interface IProduct extends Document {
   name: string;
   slug: string;
@@ -18,6 +27,7 @@ export interface IProduct extends Document {
   weight?: number;
   images: string[];
   imageKeys: string[];
+  variants?: IVariant[];
   specifications: ISpecification[];
   tags?: string[];
   stock: number;
@@ -42,6 +52,19 @@ const ProductSchema = new Schema<IProduct>(
     weight: { type: Number, default: 0, min: 0 },
     images: { type: [String], default: [] },
     imageKeys: { type: [String], default: [] },
+    variants: {
+      type: [
+        {
+          name: { type: String, trim: true },
+          price: { type: Number, default: 0, min: 0 },
+          salePrice: { type: Number, min: 0, default: null },
+          stock: { type: Number, default: 0, min: 0 },
+          lowStockThreshold: { type: Number, default: 5, min: 0 },
+          sku: { type: String, trim: true },
+        },
+      ],
+      default: [],
+    },
     specifications: {
       type: [{ key: { type: String }, value: { type: String } }],
       default: [],
@@ -58,7 +81,7 @@ const ProductSchema = new Schema<IProduct>(
 
 ProductSchema.index({ name: "text", sku: "text" });
 
-if (mongoose.models.Product && !mongoose.models.Product.schema.paths.weight) {
+if (mongoose.models.Product) {
   delete mongoose.models.Product;
 }
 

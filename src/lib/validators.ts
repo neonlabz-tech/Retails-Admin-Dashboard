@@ -44,12 +44,21 @@ export const specificationSchema = z.object({
   value: z.string().min(1, "Value is required"),
 });
 
+export const variantSchema = z.object({
+  name: z.string().trim().min(1, "Variant name/type is required"),
+  price: z.coerce.number({ message: "Variant price is required" }).min(0, "Variant price must be 0 or more"),
+  salePrice: z.coerce.number().min(0).optional().nullable(),
+  stock: z.coerce.number({ message: "Variant stock is required" }).min(0, "Variant stock must be 0 or more"),
+  lowStockThreshold: z.coerce.number().min(0).optional().default(5),
+  sku: z.string().trim().optional().default(""),
+});
+
 export const productSchema = z.object({
   name: z.string().min(1, "Product name is required"),
   description: z.string().min(1, "Description is required"),
   category: z.string().min(1, "Category is required"),
   subcategory: z.string().trim().optional().default(""),
-  price: z.coerce.number({ message: "Price is required" }).min(0, "Price must be a positive number"),
+  price: z.coerce.number().min(0).optional().default(0),
   salePrice: z.coerce.number().min(0).optional().nullable(),
   sku: z.string().trim().min(1, "SKU / Product code is required"),
   weight: z.coerce.number({ message: "Weight is required" }).min(0, "Weight must be 0 or more").optional().default(0),
@@ -57,9 +66,10 @@ export const productSchema = z.object({
     .array(z.string())
     .min(1, "At least 1 product image is required")
     .max(5, "A product can have a maximum of 5 images"),
+  variants: z.array(variantSchema).optional().default([]),
   specifications: z.array(specificationSchema).optional().default([]),
-  stock: z.coerce.number({ message: "Stock quantity is required" }).min(0, "Stock quantity must be 0 or more"),
-  lowStockThreshold: z.coerce.number({ message: "Low alert threshold is required" }).min(0, "Low alert threshold must be 0 or more"),
+  stock: z.coerce.number().min(0).optional().default(0),
+  lowStockThreshold: z.coerce.number().min(0).optional().default(5),
   status: z.enum(["active", "draft", "archived"] as const, { message: "Status is required" }),
   isFeatured: z.boolean().optional().default(false),
   tags: z.union([z.array(z.string()), z.string()]).optional().default([]),
@@ -185,6 +195,7 @@ export const createOrderSchema = z.object({
     .array(
       z.object({
         productId: z.string().min(1),
+        variantName: z.string().trim().optional().default(""),
         quantity: z.coerce.number().int().positive(),
       })
     )
