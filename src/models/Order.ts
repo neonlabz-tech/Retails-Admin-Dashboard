@@ -4,6 +4,7 @@ import { ORDER_STATUSES, PAYMENT_METHODS, PAYMENT_STATUSES, type OrderStatus, ty
 export interface IOrderItem {
   product: Types.ObjectId;
   name: string;
+  variantName?: string;
   image?: string;
   sku?: string;
   price: number;
@@ -68,6 +69,7 @@ const OrderItemSchema = new Schema<IOrderItem>(
   {
     product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
     name: { type: String, required: true },
+    variantName: { type: String, default: "" },
     image: { type: String, default: "" },
     sku: { type: String, default: "" },
     price: { type: Number, required: true },

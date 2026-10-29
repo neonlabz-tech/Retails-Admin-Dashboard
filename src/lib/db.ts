@@ -25,6 +25,15 @@ async function startEmbeddedFallback(): Promise<string> {
   const dbPath = path.join(process.cwd(), ".data", "mongo");
   if (!fs.existsSync(dbPath)) {
     fs.mkdirSync(dbPath, { recursive: true });
+  } else {
+    const lockFile = path.join(dbPath, "mongod.lock");
+    try {
+      if (fs.existsSync(lockFile)) {
+        fs.unlinkSync(lockFile);
+      }
+    } catch {
+      // Ignore if currently locked
+    }
   }
   const { MongoMemoryServer } = await import("mongodb-memory-server");
   const instance = await MongoMemoryServer.create({
