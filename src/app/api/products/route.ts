@@ -1,17 +1,28 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Product } from "@/models/Product";
 import "@/models/Category";
 import { productSchema } from "@/lib/validators";
-import { apiError, apiSuccess, handleApiError } from "@/lib/api-utils";
+import { apiError, apiSuccess, handleApiError, CORS_HEADERS } from "@/lib/api-utils";
 import { slugify, getPaginationParams, buildPaginationMeta, escapeRegex } from "@/lib/utils";
 import { getKeyFromUrl } from "@/lib/r2";
 import { generateNextSku } from "@/lib/sku";
 import { notifyLowStock } from "@/lib/notify";
+import { getSession } from "@/lib/auth";
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: CORS_HEADERS,
+  });
+}
 
 export async function GET(request: NextRequest) {
   try {
     await connectDB();
+    const session = await getSession();
+    const isAdmin = Boolean(session);
+
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") || "";
     const category = searchParams.get("category") || "";
@@ -33,7 +44,16 @@ export async function GET(request: NextRequest) {
     }
     if (category) filter.category = category;
     if (subcategory) filter.subcategory = subcategory;
-    if (status) filter.status = status;
+
+    // Strict status enforcement:
+    // If request is from an admin (in Admin Panel), allow filtering by chosen status or show all.
+    // If request is public / storefront website (non-admin), STRICTLY lock filter to active products only!
+    if (isAdmin) {
+      if (status) filter.status = status;
+    } else {
+      filter.status = "active";
+    }
+
     if (stockFilter === "out") filter.stock = { $lte: 0 };
     if (stockFilter === "low") {
       filter.$expr = { $and: [{ $gt: ["$stock", 0] }, { $lte: ["$stock", "$lowStockThreshold"] }] };

@@ -80,7 +80,7 @@ const emptyForm = {
   tags: "",
   stock: "",
   lowStockThreshold: "",
-  status: "" as "active" | "draft" | "archived" | "",
+  status: "active" as "active" | "draft" | "archived" | "",
   isFeatured: false,
   variants: [] as ProductVariant[],
 };

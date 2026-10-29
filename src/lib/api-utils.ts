@@ -1,12 +1,29 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
-export function apiSuccess<T>(data: T, message = "Success", status = 200) {
-  return NextResponse.json({ success: true, message, data }, { status });
+export const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+export function apiSuccess<T>(data: T, message = "Success", status = 200, headers: Record<string, string> = {}) {
+  return NextResponse.json(
+    { success: true, message, data },
+    { status, headers: { ...CORS_HEADERS, ...headers } }
+  );
 }
 
-export function apiError(message = "Something went wrong", status = 400, errors?: unknown) {
-  return NextResponse.json({ success: false, message, errors: errors ?? null }, { status });
+export function apiError(
+  message = "Something went wrong",
+  status = 400,
+  errors?: unknown,
+  headers: Record<string, string> = {}
+) {
+  return NextResponse.json(
+    { success: false, message, errors: errors ?? null },
+    { status, headers: { ...CORS_HEADERS, ...headers } }
+  );
 }
 
 export function handleApiError(err: unknown) {
