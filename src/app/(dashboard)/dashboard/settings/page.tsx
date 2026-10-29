@@ -114,8 +114,8 @@ export default function SettingsPage() {
                 <Store className="h-4 w-4" /> Store Information
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">Store logo</label>
                 <ImageUploader
+                  label="Store Logo"
                   images={settings.storeLogo ? [settings.storeLogo] : []}
                   onChange={(images) => setSettings({ ...settings, storeLogo: images[0] || "" })}
                   folder="settings"

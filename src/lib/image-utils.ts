@@ -26,6 +26,20 @@ export const DEFAULT_FOLDER_DIMENSIONS: Record<string, FolderDimensionConfig> = 
     hint: "Auto-fitted to 1200 × 1600 px (3:4 Portrait) • Max 15MB",
     label: "Portrait 3:4",
   },
+  avatars: {
+    width: 400,
+    height: 400,
+    badge: "400 × 400 px",
+    hint: "Auto-fitted to 400 × 400 px (1:1 Square) • Max 5MB",
+    label: "Square 1:1",
+  },
+  settings: {
+    width: 400,
+    height: 400,
+    badge: "400 × 400 px",
+    hint: "Auto-fitted to 400 × 400 px (1:1 Square) • Max 5MB",
+    label: "Square 1:1",
+  },
 };
 
 /**

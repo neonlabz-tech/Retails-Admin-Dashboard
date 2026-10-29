@@ -11,7 +11,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const session = await getSession();
   if (!session) redirect("/login");
 
-  let avatar: string | undefined;
+  let avatar: string | undefined = typeof session.avatar === "string" ? session.avatar : undefined;
   let name = session.name;
   let email = session.email;
   let role = session.role;
@@ -23,7 +23,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
       name = dbAdmin.name || name;
       email = dbAdmin.email || email;
       role = dbAdmin.role || role;
-      avatar = dbAdmin.avatar || undefined;
+      avatar = dbAdmin.avatar || avatar || undefined;
     }
   } catch {
     /* fallback to session */

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { Menu, Bell, LogOut, UserCircle, Settings, ChevronRight, ChevronDown } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
@@ -9,7 +10,7 @@ import { cn } from "@/lib/utils";
 
 interface HeaderProps {
   onMenuClick: () => void;
-  admin: { name: string; email: string; role: string } | null;
+  admin: { name: string; email: string; role: string; avatar?: string } | null;
 }
 
 const LABELS: Record<string, string> = {
@@ -58,9 +59,32 @@ export function Breadcrumbs() {
 export function Header({ onMenuClick, admin }: HeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [unread, setUnread] = useState(0);
+  const [currentAvatar, setCurrentAvatar] = useState(admin?.avatar);
+  const [currentName, setCurrentName] = useState(admin?.name);
   const menuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const toast = useToast();
+
+  useEffect(() => {
+    setCurrentAvatar(admin?.avatar);
+    setCurrentName(admin?.name);
+  }, [admin?.avatar, admin?.name]);
+
+  useEffect(() => {
+    function handleProfileUpdated(e: Event) {
+      const customEvent = e as CustomEvent<{ avatar?: string; name?: string }>;
+      if (customEvent.detail) {
+        if (customEvent.detail.avatar !== undefined) {
+          setCurrentAvatar(customEvent.detail.avatar);
+        }
+        if (customEvent.detail.name !== undefined) {
+          setCurrentName(customEvent.detail.name);
+        }
+      }
+    }
+    window.addEventListener("admin-profile-updated", handleProfileUpdated);
+    return () => window.removeEventListener("admin-profile-updated", handleProfileUpdated);
+  }, []);
 
   useEffect(() => {
     function onClickOutside(e: MouseEvent) {
@@ -168,11 +192,22 @@ export function Header({ onMenuClick, admin }: HeaderProps) {
         <div className="h-6 w-px bg-slate-200" />
         <div className="relative" ref={menuRef}>
           <button onClick={() => setMenuOpen((v) => !v)} className="flex items-center gap-2.5 rounded-xl p-1 hover:bg-slate-200/50 transition-colors cursor-pointer">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand to-brand-hover text-sm font-bold text-white shadow-sm">
-              {admin?.name?.charAt(0)?.toUpperCase() || "S"}
+            <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-brand to-brand-hover text-sm font-bold text-white shadow-sm ring-1 ring-slate-900/5">
+              {currentAvatar ? (
+                <Image
+                  src={currentAvatar}
+                  alt={currentName || "Admin profile"}
+                  fill
+                  sizes="36px"
+                  unoptimized
+                  className="object-cover"
+                />
+              ) : (
+                (currentName || "S").charAt(0).toUpperCase()
+              )}
             </div>
             <div className="hidden text-left sm:block">
-              <p className="text-sm font-semibold text-slate-900 leading-tight">{admin?.name || "Super Admin"}</p>
+              <p className="text-sm font-semibold text-slate-900 leading-tight">{currentName || "Super Admin"}</p>
               <p className="text-xs text-slate-400 leading-tight capitalize">{admin?.role ? admin.role.replace("_", " ") : "Super Admin"}</p>
             </div>
             <ChevronDown className={cn("hidden sm:block h-3.5 w-3.5 text-slate-400 transition-transform duration-200", menuOpen && "rotate-180")} />

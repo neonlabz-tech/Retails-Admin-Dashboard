@@ -16,6 +16,7 @@ export interface SessionPayload {
   email: string;
   name: string;
   role: AdminRole;
+  avatar?: string;
   [key: string]: unknown;
 }
 

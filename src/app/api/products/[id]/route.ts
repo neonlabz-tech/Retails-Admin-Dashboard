@@ -1,11 +1,11 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/lib/db";
 import { Product } from "@/models/Product";
 import "@/models/Category";
 import { Order } from "@/models/Order";
 import { StockLog } from "@/models/StockLog";
 import { productSchema } from "@/lib/validators";
-import { apiError, apiSuccess, handleApiError } from "@/lib/api-utils";
+import { apiError, apiSuccess, handleApiError, CORS_HEADERS } from "@/lib/api-utils";
 import { slugify, escapeRegex } from "@/lib/utils";
 import { deleteFile, getKeyFromUrl } from "@/lib/r2";
 import { notifyLowStock } from "@/lib/notify";
@@ -15,11 +15,33 @@ interface Params {
   params: Promise<{ id: string }>;
 }
 
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: CORS_HEADERS,
+  });
+}
+
 export async function GET(_request: NextRequest, { params }: Params) {
   try {
     await connectDB();
     const { id } = await params;
-    const product = await Product.findById(id).populate("category", "name slug");
+    const session = await getSession();
+    const isAdmin = Boolean(session);
+
+    const filter: Record<string, unknown> = {};
+    if (id.match(/^[0-9a-fA-F]{24}$/)) {
+      filter._id = id;
+    } else {
+      filter.slug = id.toLowerCase();
+    }
+
+    // If non-admin (storefront / public), ONLY return if status is active
+    if (!isAdmin) {
+      filter.status = "active";
+    }
+
+    const product = await Product.findOne(filter).populate("category", "name slug");
     if (!product) return apiError("Product not found", 404);
     return apiSuccess(product);
   } catch (err) {
